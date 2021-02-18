@@ -119,7 +119,7 @@ std::pair<bool, std::wstring> Translate(const std::wstring& text)
 	DevTools::SendRequest(L"Page.navigate", FormatString(LR"({"url":"https://www.deepl.com/translator#%s/%s/%s"})", translateFrom.Copy(), translateTo.Copy(), Escape(text)));
 	for (int retry = 0; ++retry < 100; Sleep(100))
 		if (auto translation = Copy(
-			DevTools::SendRequest(L"Runtime.evaluate", LR"({"expression":"document.querySelector('#target-dummydiv').innerHTML","returnByValue":true})")[L"result"][L"value"].String()
+			DevTools::SendRequest(L"Runtime.evaluate", LR"({"expression":"document.querySelector('#target-dummydiv').innerHTML.trim() ","returnByValue":true})")[L"result"][L"value"].String()
 		)) if (!translation->empty()) return { true, translation.value() };
 	if (auto errorMessage = Copy(
 		DevTools::SendRequest(
