@@ -1,7 +1,11 @@
+# CMakeList.txt: GUI 的 CMake 專案，在此包含來源及定義
+# 引入cmake 模組 cmake/QtUtils.cmake
 include(QtUtils)
+# 執行QtUtils 的巨集(macro)
 msvc_registry_search()
 find_qt5(Core Widgets)
 
+# 將來源新增到此專案的可執行檔。
 add_executable(Textractor WIN32 
 	main.cpp
 	mainwindow.cpp
