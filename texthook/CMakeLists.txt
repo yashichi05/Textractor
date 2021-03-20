@@ -27,6 +27,9 @@ set(texthook_src
 )
 endif()
 
+# 新增名為texthook 的程式庫，MODULE 為設定動態連結程式庫的意思
 add_library(texthook MODULE ${texthook_src})
 target_precompile_headers(texthook REUSE_FROM pch)
+
+#texthook 與minhook程式庫連結
 target_link_libraries(texthook minhook)

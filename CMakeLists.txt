@@ -25,7 +25,7 @@ add_compile_options(
 if(${CMAKE_SIZEOF_VOID_P} EQUAL 8)
   # 設定CMAKE_FINAL_OUTPUT_DIRECTORY
   set(CMAKE_FINAL_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/builds/${CMAKE_BUILD_TYPE}_x64)
-  # 設定函式庫
+  # 設定函式庫 (由texthook 函式庫連結)
   link_directories(x64libs)
 else()
   set(CMAKE_FINAL_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/builds/${CMAKE_BUILD_TYPE}_x86)
