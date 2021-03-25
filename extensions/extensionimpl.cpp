@@ -19,6 +19,7 @@ extern "C" __declspec(dllexport) wchar_t* OnNewSentence(wchar_t* sentence, const
 	{
 		std::wstring sentenceCopy(sentence);
 		int oldSize = sentenceCopy.size();
+		//所有插件都經過這裡，呼叫ProcessSentence並將值傳至sentenceCopy
 		if (ProcessSentence(sentenceCopy, SentenceInfo{ sentenceInfo }))
 		{
 			if (sentenceCopy.size() > oldSize) sentence = (wchar_t*)HeapReAlloc(GetProcessHeap(), HEAP_GENERATE_EXCEPTIONS, sentence, (sentenceCopy.size() + 1) * sizeof(wchar_t));

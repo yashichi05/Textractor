@@ -472,10 +472,14 @@ private:
 		int definitionIndex;
 	} dictionaryWindow;
 } extraWindow;
+// ↑ 直接用這個class ExtraWindow宣告一個extraWindow
 
 bool ProcessSentence(std::wstring& sentence, SentenceInfo sentenceInfo)
 {
 	if (sentenceInfo["current select"] && sentenceInfo["text number"] != 0)
+	// [ a= b]{return a} https://docs.microsoft.com/zh-tw/cpp/cpp/lambda-expressions-in-cpp?view=msvc-160
+	// Lambda 運算式(匿名函式)
+	// invokeMethod 在extraWindow 內執行程式
 		QMetaObject::invokeMethod(&extraWindow, [sentence = S(sentence)] { extraWindow.AddSentence(sentence); });
 	return false;
 }
