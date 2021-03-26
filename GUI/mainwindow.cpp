@@ -134,7 +134,7 @@ namespace
 
 	std::optional<std::wstring> UserSelectedProcess()
 	{
-		QStringList savedProcesses = QString::fromUtf8(QTextFile(GAME_SAVE_FILE, QIODevice::ReadOnly).readAll()).split("\n", QString::SkipEmptyParts);
+		QStringList savedProcesses = QString::fromUtf8(QTextFile(GAME_SAVE_FILE, QIODevice::ReadOnly).readAll()).split("\n", Qt::SkipEmptyParts);
 		std::reverse(savedProcesses.begin(), savedProcesses.end());
 		savedProcesses.removeDuplicates();
 		savedProcesses.insert(1, FROM_COMPUTER);
@@ -231,7 +231,7 @@ namespace
 		if (!processName) return;
 		for (auto file : { GAME_SAVE_FILE, HOOK_SAVE_FILE })
 		{
-			QStringList lines = QString::fromUtf8(QTextFile(file, QIODevice::ReadOnly).readAll()).split("\n", QString::SkipEmptyParts);
+			QStringList lines = QString::fromUtf8(QTextFile(file, QIODevice::ReadOnly).readAll()).split("\n", Qt::SkipEmptyParts);
 			lines.erase(std::remove_if(lines.begin(), lines.end(), [&](const QString& line) { return line.contains(S(processName.value())); }), lines.end());
 			QTextFile(file, QIODevice::WriteOnly | QIODevice::Truncate).write(lines.join("\n").append("\n").toUtf8());
 		}
@@ -519,7 +519,7 @@ namespace
 		// This does add (potentially tons of) duplicates to the file, but as long as I don't perform Ω(N^2) operations it shouldn't be an issue
 		QTextFile(GAME_SAVE_FILE, QIODevice::WriteOnly | QIODevice::Append).write((process + "\n").toUtf8());
 
-		QStringList allProcesses = QString(QTextFile(HOOK_SAVE_FILE, QIODevice::ReadOnly).readAll()).split("\n", QString::SkipEmptyParts);
+		QStringList allProcesses = QString(QTextFile(HOOK_SAVE_FILE, QIODevice::ReadOnly).readAll()).split("\n", Qt::SkipEmptyParts);
 		auto hookList = std::find_if(allProcesses.rbegin(), allProcesses.rend(), [&](QString hookList) { return hookList.contains(process); });
 		if (hookList != allProcesses.rend())
 			for (auto hookInfo : hookList->split(" , "))
@@ -656,10 +656,10 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
 		{
 			std::unordered_set<std::wstring> attachTargets;
 			if (autoAttach)
-				for (auto process : QString(QTextFile(GAME_SAVE_FILE, QIODevice::ReadOnly).readAll()).split("\n", QString::SkipEmptyParts))
+				for (auto process : QString(QTextFile(GAME_SAVE_FILE, QIODevice::ReadOnly).readAll()).split("\n", Qt::SkipEmptyParts))
 					attachTargets.insert(S(process));
 			if (autoAttachSavedOnly)
-				for (auto process : QString(QTextFile(HOOK_SAVE_FILE, QIODevice::ReadOnly).readAll()).split("\n", QString::SkipEmptyParts))
+				for (auto process : QString(QTextFile(HOOK_SAVE_FILE, QIODevice::ReadOnly).readAll()).split("\n", Qt::SkipEmptyParts))
 					attachTargets.insert(S(process.split(" , ")[0]));
 
 			if (!attachTargets.empty())
