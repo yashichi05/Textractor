@@ -1,22 +1,27 @@
 macro(msvc_registry_search)
+# 沒有Qt5_DIR、MSVC 變數
 	if(NOT DEFINED Qt5_DIR AND MSVC)
-		# look for user-registry pointing to qtcreator
+		# look for user-registry pointing to qtcreator 取得 qtcreater 的bin資料夾(C:\Qt\\Tools\QtCreator\bin\qtcreator.exe -client "%1")
 		get_filename_component(QT_BIN [HKEY_CURRENT_USER\\Software\\Classes\\Applications\\QtProject.QtCreator.pro\\shell\\Open\\Command] PATH)
 
 		# get root path so we can search for 5.3, 5.4, 5.5, etc
+		# string(REPLACE 找的文字 取代成的文字 輸出的變數名 輸入字串)  -> C:/Qt/;/QtCreator/bin
 		string(REPLACE "/Tools" ";" QT_BIN "${QT_BIN}")
+		# 取得陣列的N個資料，list(GET 輸入陣列資料 第幾個 輸出變數) ->  C:/Qt/
 		list(GET QT_BIN 0 QT_BIN)
+		# 取得 5.1 版資料夾陣列
 		file(GLOB QT_VERSIONS "${QT_BIN}/5.1*")
 		list(SORT QT_VERSIONS)
 
 		# assume the latest version will be last alphabetically
 		list(REVERSE QT_VERSIONS)
-
+		# 取得 5.1最新版
 		list(GET QT_VERSIONS 0 QT_VERSION)
 
 		# fix any double slashes which seem to be common
 		string(REPLACE "//" "/"  QT_VERSION "${QT_VERSION}")
-
+		# https://cmake.org/cmake/help/latest/variable/MSVC_VERSION.html
+		# 設定msvc 資料夾版本名
 		if(MSVC_VERSION GREATER_EQUAL 1920)
 			set(QT_MSVC 2019)
 		elseif(MSVC_VERSION GREATER_EQUAL 1910)
@@ -26,7 +31,7 @@ macro(msvc_registry_search)
 		else()
 			message(WARNING "Unsupported MSVC toolchain version")
 		endif()
-
+		# 設定64 或 32
 		if(QT_MSVC)
 			if(CMAKE_CL_64)
 				SET(QT_SUFFIX "_64")
@@ -35,6 +40,7 @@ macro(msvc_registry_search)
 			endif()
 
 			# MSVC 2015+ is only backwards compatible
+			# 設定 Qt5_DIR 變數
 			if(EXISTS "${QT_VERSION}/msvc${QT_MSVC}${QT_SUFFIX}")
 				set(Qt5_DIR "${QT_VERSION}/msvc${QT_MSVC}${QT_SUFFIX}/lib/cmake/Qt5")
 			elseif(QT_MSVC GREATER_EQUAL 2019 AND EXISTS "${QT_VERSION}/msvc2017${QT_SUFFIX}")
@@ -51,7 +57,9 @@ endmacro()
 macro(find_qt5)
 	set(CMAKE_INCLUDE_CURRENT_DIR ON)
 	#set(CMAKE_AUTOMOC ON)
+	# 自動處理qt
 	set(CMAKE_AUTOUIC ON)
+	# 新增編譯變數 -D
 	add_definitions(-DQT_DEPRECATED_WARNINGS -DQT_DISABLE_DEPRECATED_BEFORE=0x060000)
 	find_package(Qt5 COMPONENTS ${ARGN})
 

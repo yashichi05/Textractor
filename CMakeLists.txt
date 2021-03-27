@@ -3,7 +3,7 @@
 cmake_minimum_required(VERSION 3.16)
 # 專案名稱
 project(Textractor)
-# 設定CMAKE_MODULE_PATH 值${CMAKE_MODULE_PATH} + ${CMAKE_CURRENT_SOURCE_DIR}/cmake
+# 設定CMAKE_MODULE_PATH 值${CMAKE_MODULE_PATH} + ${CMAKE_CURRENT_SOURCE_DIR}/cmake(用來引用cmake script)
 # 中間空白會忽略
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 #設定MSVC編譯選項
@@ -34,20 +34,25 @@ endif()
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY $<1:${CMAKE_FINAL_OUTPUT_DIRECTORY}>)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY $<1:${CMAKE_FINAL_OUTPUT_DIRECTORY}>)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY $<1:${CMAKE_FINAL_OUTPUT_DIRECTORY}>)
-
+#頭文件所在地
 include_directories(include)
-# 新增程式庫
+# 新增程式庫(設定target_precompile_headers用，是不是text.cpp 無所謂?)
 add_library(pch text.cpp)
+#編譯pch時，預先編譯common.h
 target_precompile_headers(pch PUBLIC include/common.h)
 
+#GLOB產生名為ASSETS 的檔案清單(陣列)
+#COPY將此清單複製到CMAKE_FINAL_OUTPUT_DIRECTORY
 file(GLOB ASSETS assets/*)
 file(COPY ${ASSETS} DESTINATION ${CMAKE_FINAL_OUTPUT_DIRECTORY})
 
 add_library(text text.cpp)
+#編譯時提供的變數 TEXT_LANGUAGE，設定text definitions(編譯語系)
 target_compile_definitions(text PRIVATE ${TEXT_LANGUAGE})
+#連結library
 link_libraries(text)
 
-# 包含子專案。
+# 包含需建置的子專案
 add_subdirectory(GUI)
 add_subdirectory(texthook)
 add_subdirectory(extensions)

@@ -1,8 +1,13 @@
+#導入QtUtils.cmake 檔案
 include(QtUtils)
+#調用巨集
 msvc_registry_search()
 find_qt5(Core Widgets WebSockets)
+#使用 37 規則
+#https://cmake.org/cmake/help/latest/policy/CMP0037.html
 cmake_policy(SET CMP0037 OLD)
 
+#新增MODULE程式庫(dll)
 add_library(Bing\ Translate MODULE bingtranslate.cpp translatewrapper.cpp network.cpp extensionimpl.cpp)
 add_library(Copy\ to\ Clipboard MODULE copyclipboard.cpp extensionimpl.cpp)
 add_library(DeepL\ Translate MODULE deepltranslate.cpp translatewrapper.cpp network.cpp extensionimpl.cpp)
@@ -20,6 +25,7 @@ add_library(Replacer MODULE replacer.cpp extensionimpl.cpp)
 add_library(Styler MODULE styler.cpp extensionimpl.cpp)
 add_library(Thread\ Linker MODULE threadlinker.cpp extensionimpl.cpp)
 
+#重用在pch編譯的common.h
 target_precompile_headers(Bing\ Translate REUSE_FROM pch)
 target_precompile_headers(Copy\ to\ Clipboard REUSE_FROM pch)
 target_precompile_headers(DeepL\ Translate REUSE_FROM pch)
@@ -36,7 +42,7 @@ target_precompile_headers(Remove\ 30\ Repeated\ Sentences REUSE_FROM pch)
 target_precompile_headers(Replacer REUSE_FROM pch)
 target_precompile_headers(Styler REUSE_FROM pch)
 target_precompile_headers(Thread\ Linker REUSE_FROM pch)
-
+#程式庫連結程式庫
 target_link_libraries(Bing\ Translate winhttp Qt5::Widgets)
 target_link_libraries(DeepL\ Translate winhttp Qt5::Widgets)
 target_link_libraries(DevTools\ DeepL\ Translate shell32 winhttp Qt5::Widgets Qt5::WebSockets)
@@ -47,8 +53,11 @@ target_link_libraries(Regex\ Filter Qt5::Widgets)
 target_link_libraries(Styler Qt5::Widgets)
 target_link_libraries(Thread\ Linker Qt5::Widgets)
 
+#執行命令
 add_custom_target(Cleaner ALL COMMAND del *.xdll WORKING_DIRECTORY ${CMAKE_FINAL_OUTPUT_DIRECTORY})
 
+# Qt5WebSocket.dll不存在於CMAKE_FINAL_OUTPUT_DIRECTORY(build資料夾)
+# 用途不明????????????????
 if (NOT EXISTS ${CMAKE_FINAL_OUTPUT_DIRECTORY}/Qt5WebSockets.dll AND NOT EXISTS ${CMAKE_FINAL_OUTPUT_DIRECTORY}/Qt5WebSocketsd.dll)
     add_custom_command(TARGET DevTools\ DeepL\ Translate
         POST_BUILD
