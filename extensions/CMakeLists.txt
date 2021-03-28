@@ -57,7 +57,12 @@ target_link_libraries(Thread\ Linker Qt5::Widgets)
 add_custom_target(Cleaner ALL COMMAND del *.xdll WORKING_DIRECTORY ${CMAKE_FINAL_OUTPUT_DIRECTORY})
 
 # Qt5WebSocket.dll不存在於CMAKE_FINAL_OUTPUT_DIRECTORY(build資料夾)
-# 用途不明????????????????
+# 產生需要的 qt dll 檔
+# POST_BUILD 在所有規則運行後執行
+# CMAKE_COMMAND = cmd 的cmake 開頭指令
+# 設定PATH = PATH值 + qt/bin資料夾位置; 
+# qt5_install_prefix 由qtutils.cmake 設定的值
+# Qt5::windeployqt --dir 等於  windeployqt.exe --dir
 if (NOT EXISTS ${CMAKE_FINAL_OUTPUT_DIRECTORY}/Qt5WebSockets.dll AND NOT EXISTS ${CMAKE_FINAL_OUTPUT_DIRECTORY}/Qt5WebSocketsd.dll)
     add_custom_command(TARGET DevTools\ DeepL\ Translate
         POST_BUILD

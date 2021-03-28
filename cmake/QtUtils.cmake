@@ -57,6 +57,7 @@ endmacro()
 
 macro(find_qt5)
 	set(CMAKE_INCLUDE_CURRENT_DIR ON)
+	# AUTOMOC > 編譯Q_OBJECT用
 	#set(CMAKE_AUTOMOC ON)
 	# 自動處理qt
 	set(CMAKE_AUTOUIC ON)
@@ -68,12 +69,12 @@ macro(find_qt5)
 
 	# https://cmake.org/cmake/help/v3.0/prop_gbl/PACKAGES_FOUND.html 找到package
 	if(Qt5_FOUND)
-	# 是否為WIN32
-	#TARGET 由這些建立 add_executable(), add_library(), or add_custom_target() 是否存在。
+	# 是否為WIN32， Qt5::qmake -> qt5 核心載入後 增加的target
+	# TARGET 由這些建立 add_executable(), add_library(), or add_custom_target() 是否存在。
 		if(WIN32 AND TARGET Qt5::qmake AND NOT TARGET Qt5::windeployqt)
-		
+		# 取得資料夾 設為_qt5_qmake_location 變數qt5_install_prefix 變數
 			get_target_property(_qt5_qmake_location Qt5::qmake IMPORTED_LOCATION)
-		# C:/Qt/5.15.2/mingw81_32
+		# 輸出結果 命名為qt5_install_prefix
 			execute_process(
 				COMMAND "${_qt5_qmake_location}" -query QT_INSTALL_PREFIX
 				RESULT_VARIABLE return_code
@@ -84,7 +85,7 @@ macro(find_qt5)
 			set(imported_location "${qt5_install_prefix}/bin/windeployqt.exe")
 
 			if(EXISTS ${imported_location})
-			# 匯入執行檔(qt 發佈器，用來複製qt所需dll)
+			# 匯入執行檔(qt 發佈器，用來複製qt所需dll)，IMPORTED 引用專案外的target
 				add_executable(Qt5::windeployqt IMPORTED)
 			# 設定 PROPERTIES IMPORTED_LOCATION 匯入路徑
 				set_target_properties(Qt5::windeployqt PROPERTIES
