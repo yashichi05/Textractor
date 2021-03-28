@@ -42,7 +42,7 @@ target_precompile_headers(Remove\ 30\ Repeated\ Sentences REUSE_FROM pch)
 target_precompile_headers(Replacer REUSE_FROM pch)
 target_precompile_headers(Styler REUSE_FROM pch)
 target_precompile_headers(Thread\ Linker REUSE_FROM pch)
-#程式庫連結程式庫
+#程式庫連結程式庫 winhttp、Qt5::Widgets
 target_link_libraries(Bing\ Translate winhttp Qt5::Widgets)
 target_link_libraries(DeepL\ Translate winhttp Qt5::Widgets)
 target_link_libraries(DevTools\ DeepL\ Translate shell32 winhttp Qt5::Widgets Qt5::WebSockets)

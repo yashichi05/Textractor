@@ -1,7 +1,8 @@
 macro(msvc_registry_search)
 # 沒有Qt5_DIR、MSVC 變數
 	if(NOT DEFINED Qt5_DIR AND MSVC)
-		# look for user-registry pointing to qtcreator 取得 qtcreater 的bin資料夾(C:\Qt\\Tools\QtCreator\bin\qtcreator.exe -client "%1")
+		# look for user-registry pointing to qtcreator 取得 qtcreater 的bin資料夾(C:\Qt\\Tools\QtCreator\bin\qtcreator.exe -client "%1") ，PATH 同 DIRECTORY 僅取得資料夾
+		# https://cmake.org/cmake/help/v3.0/command/get_filename_component.html
 		get_filename_component(QT_BIN [HKEY_CURRENT_USER\\Software\\Classes\\Applications\\QtProject.QtCreator.pro\\shell\\Open\\Command] PATH)
 
 		# get root path so we can search for 5.3, 5.4, 5.5, etc
@@ -61,12 +62,18 @@ macro(find_qt5)
 	set(CMAKE_AUTOUIC ON)
 	# 新增編譯變數 -D
 	add_definitions(-DQT_DEPRECATED_WARNINGS -DQT_DISABLE_DEPRECATED_BEFORE=0x060000)
+	# argn 巨集傳入的arguments(Core Widgets WebSockets)
+	# 設qt5 的COMPONENTS
 	find_package(Qt5 COMPONENTS ${ARGN})
 
+	# https://cmake.org/cmake/help/v3.0/prop_gbl/PACKAGES_FOUND.html 找到package
 	if(Qt5_FOUND)
+	# 是否為WIN32
+	#TARGET 由這些建立 add_executable(), add_library(), or add_custom_target() 是否存在。
 		if(WIN32 AND TARGET Qt5::qmake AND NOT TARGET Qt5::windeployqt)
+		
 			get_target_property(_qt5_qmake_location Qt5::qmake IMPORTED_LOCATION)
-
+		# C:/Qt/5.15.2/mingw81_32
 			execute_process(
 				COMMAND "${_qt5_qmake_location}" -query QT_INSTALL_PREFIX
 				RESULT_VARIABLE return_code
@@ -77,8 +84,9 @@ macro(find_qt5)
 			set(imported_location "${qt5_install_prefix}/bin/windeployqt.exe")
 
 			if(EXISTS ${imported_location})
+			# 匯入執行檔(qt 發佈器，用來複製qt所需dll)
 				add_executable(Qt5::windeployqt IMPORTED)
-
+			# 設定 PROPERTIES IMPORTED_LOCATION 匯入路徑
 				set_target_properties(Qt5::windeployqt PROPERTIES
 					IMPORTED_LOCATION ${imported_location}
 				)
