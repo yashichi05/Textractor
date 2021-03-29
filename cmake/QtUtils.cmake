@@ -41,7 +41,7 @@ macro(msvc_registry_search)
 			endif()
 
 			# MSVC 2015+ is only backwards compatible
-			# 設定 Qt5_DIR 變數
+			# QT5 find package時，會去找Qt5_DIR變數，設定 Qt5_DIR 變數
 			if(EXISTS "${QT_VERSION}/msvc${QT_MSVC}${QT_SUFFIX}")
 				set(Qt5_DIR "${QT_VERSION}/msvc${QT_MSVC}${QT_SUFFIX}/lib/cmake/Qt5")
 			elseif(QT_MSVC GREATER_EQUAL 2019 AND EXISTS "${QT_VERSION}/msvc2017${QT_SUFFIX}")
