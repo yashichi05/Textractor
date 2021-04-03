@@ -26,6 +26,7 @@ extern QStringList languages;
 extern std::wstring autoDetectLanguage;
 extern bool translateSelectedOnly, rateLimitAll, rateLimitSelected, useCache, useFilter;
 extern int tokenCount, tokenRestoreDelay, maxSentenceSize;
+// 宣告 translate 函式，以便調用其他cpp內的同名函示(header)
 std::pair<bool, std::wstring> Translate(const std::wstring& text);
 
 // backwards compatibility
@@ -118,6 +119,7 @@ public:
 		}
 
 		setWindowTitle(TRANSLATION_PROVIDER);
+		// 開啟視窗，QWidget::show 等於call this繼承的QWidget 的show，也就是自己的show
 		QMetaObject::invokeMethod(this, &QWidget::show, Qt::QueuedConnection);
 
 		std::ifstream stream(TRANSLATION_CACHE_FILE, std::ios::binary);

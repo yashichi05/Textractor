@@ -478,7 +478,7 @@ bool ProcessSentence(std::wstring& sentence, SentenceInfo sentenceInfo)
 {
 	if (sentenceInfo["current select"] && sentenceInfo["text number"] != 0)
 	// [ a= b]{return a} https://docs.microsoft.com/zh-tw/cpp/cpp/lambda-expressions-in-cpp?view=msvc-160
-	// Lambda 運算式(匿名函式)
+	// Lambda 運算式(匿名函式)，[sentence = S(sentence)] 讓內部可使用sentence 變數
 	// invokeMethod 在extraWindow 內執行程式
 		QMetaObject::invokeMethod(&extraWindow, [sentence = S(sentence)] { extraWindow.AddSentence(sentence); });
 	return false;
