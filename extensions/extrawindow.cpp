@@ -179,7 +179,7 @@ public:
 		});
 		ui.display->installEventFilter(this);
 		ui.display->setMouseTracking(true);
-
+		// 安全的跨線程調用，QueuedConnection -> 視窗Loop排隊執行
 		QMetaObject::invokeMethod(this, [this]
 		{
 			show();

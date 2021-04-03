@@ -42,6 +42,7 @@ namespace
 		{
 			if (HMODULE module = LoadLibraryW(S(extenName + ".xdll").c_str()))
 			{
+				// 取出插件函示
 				if (auto callback = (decltype(Extension::callback))GetProcAddress(module, "OnNewSentence"))
 				{
 					std::scoped_lock writeLock(extenMutex);
@@ -119,6 +120,7 @@ bool DispatchSentenceToExtensions(std::wstring& sentence, const InfoForExtension
 	wchar_t* sentenceBuffer = (wchar_t*)HeapAlloc(GetProcessHeap(), HEAP_GENERATE_EXCEPTIONS, (sentence.size() + 1) * sizeof(wchar_t));
 	wcscpy_s(sentenceBuffer, sentence.size() + 1, sentence.c_str());
 	concurrency::reader_writer_lock::scoped_lock_read readLock(extenMutex);
+	// 輪流Call 插件的OnNewSentence(他會call 每個插件的ProcessSentence)
 	for (const auto& extension : extensions)
 		if (!*(sentenceBuffer = extension.callback(sentenceBuffer, sentenceInfo))) break;
 	sentence = sentenceBuffer;
