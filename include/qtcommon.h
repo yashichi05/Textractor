@@ -25,6 +25,10 @@ static thread_local bool ok;
 constexpr auto CONFIG_FILE = u8"Textractor.ini";
 constexpr auto WINDOW = u8"Window";
 
+// https://docs.microsoft.com/zh-tw/cpp/cpp/initializing-classes-and-structs-without-constructors-cpp?view=msvc-160
+// struct 類似class，struct 預設public 繼承、宣告，class 預設private繼承、宣告
+// struct 繼承 QSettings，裡面有一個建構子，須帶入QObject，並且呼叫繼承的QSettings 建構子且帶入parent
+// CONFIG_FILE ini檔案位置，IniFormat使用ini檔案宣告
 struct Settings : QSettings { Settings(QObject* parent = nullptr) : QSettings(CONFIG_FILE, QSettings::IniFormat, parent) {} };
 struct QTextFile : QFile { QTextFile(QString name, QIODevice::OpenMode mode) : QFile(name) { open(mode | QIODevice::Text); } };
 struct Localizer { Localizer() { Localize(); } };

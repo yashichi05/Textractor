@@ -51,15 +51,20 @@ namespace
 	}
 }
 
+// QDialog class
 class Window : public QDialog, Localizer
 {
 public:
+// WindowMinMaxButtonsHint加入最大最小按鈕，QDialog原本只有關閉紐
 	Window() : QDialog(nullptr, Qt::WindowMinMaxButtonsHint)
 	{
+		// 以下 設定gui表單及綁定事件
+
+		// 對QDialog new class 新增layout
 		display = new QFormLayout(this);
-
+		// ini檔 使用特定群組(用來分類個程式設定)
 		settings.beginGroup(TRANSLATION_PROVIDER);
-
+		// 下拉選單
 		auto translateToCombo = new QComboBox(this);
 		translateToCombo->addItems(languages);
 		int language = -1;
@@ -117,7 +122,7 @@ public:
 			keyLabel->setOpenExternalLinks(true);
 			display->addRow(keyLabel, keyEdit);
 		}
-
+		// 以上 設定gui表單及綁定事件
 		setWindowTitle(TRANSLATION_PROVIDER);
 		// 開啟視窗，QWidget::show 等於call this繼承的QWidget 的show，也就是自己的show
 		QMetaObject::invokeMethod(this, &QWidget::show, Qt::QueuedConnection);
@@ -148,7 +153,7 @@ private:
 		settings.setValue(TRANSLATE_FROM, S(translateFrom->assign(S(language.split(": ")[1]))));
 	}
 } window;
-
+// 入口
 bool ProcessSentence(std::wstring& sentence, SentenceInfo sentenceInfo)
 {
 	if (sentenceInfo["text number"] == 0 || sentence.size() > maxSentenceSize) return false;
