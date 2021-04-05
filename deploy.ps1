@@ -1,4 +1,5 @@
-﻿param([string]$version)
+﻿# 定義version 為string
+param([string]$version)
 
 cd $PSScriptRoot;
 mkdir -Force -Verbose builds;
@@ -6,6 +7,8 @@ cd builds;
 mkdir -Force -Verbose x86;
 mkdir -Force -Verbose x64;
 
+# @{}雜湊表(類似物件)
+# GetEnumerator 取值，foreach 用
 foreach ($language in @{
 	ENGLISH="";
 	SPANISH="Spanish";
@@ -28,9 +31,11 @@ foreach ($language in @{
 	{
 		cd $arch;
 		$VS_arch = if ($arch -eq "x86") {"Win32"} else {"x64"};
+		# cmake 產生專案，msvc 建立專案，devenv SolnConfigName，建置debug或release，及選平台x64 win32
 		&"C:\Program Files\CMake\bin\cmake" -G "Visual Studio 16 2019" -A"$VS_arch" -DVERSION="$version" -DTEXT_LANGUAGE="$($language.Key)" -DCMAKE_BUILD_TYPE="Release" ../..;
 		&"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\devenv" Textractor.sln /build "Release|$VS_arch";
 		cd ..;
+		# Textractor-French-version/x86
 		mkdir -Force -Verbose "$folder/$arch";
 		foreach ($file in @(
 			"Textractor.exe",
@@ -62,6 +67,7 @@ foreach ($language in @{
 			copy -Force -Recurse -Verbose -Destination "$folder/$arch/$extension.xdll" -Path "Release_$arch/$extension.dll";
 		}
 	}
+	# 簽署應用程式
 	&"C:\Program Files (x86)\Windows Kits\10\App Certification Kit\signtool.exe" sign /a /v /t "http://timestamp.digicert.com"  /fd SHA256 @(dir "$folder\**\*");
 }
 
@@ -94,5 +100,6 @@ copy -Force -Recurse -Verbose -Destination "Textractor" -Path @("Runtime/*", "Te
 &"C:\Program Files\7-Zip\7z" a "Textractor-$version-Zip-Version-English-Only.zip" Textractor/
 
 cd ..;
+# 建立安裝檔
 &"C:\Program Files (x86)\Inno Setup 6\iscc" -DVERSION="$version" installer.iss;
 &"C:\Program Files (x86)\Windows Kits\10\App Certification Kit\signtool.exe" sign /a /v /t "http://timestamp.digicert.com"  /fd SHA256 "Builds/Textractor-$version-Setup.exe";
