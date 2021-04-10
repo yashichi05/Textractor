@@ -35,9 +35,12 @@ extern const char* SAVE_SETTINGS;
 
 constexpr auto DICTIONARY_SAVE_FILE = u8"SavedDictionary.txt";
 
+//顏色選擇器
 QColor colorPrompt(QWidget* parent, QColor default, const QString& title, bool customOpacity = true)
 {
+	//開啟選擇器視窗
 	QColor color = QColorDialog::getColor(default, parent, title);
+	// 設定透明度
 	if (customOpacity) color.setAlpha(255 * QInputDialog::getDouble(parent, title, OPACITY, default.alpha() / 255.0, 0, 1, 3, nullptr, Qt::WindowCloseButtonHint));
 	return color;
 }
@@ -46,24 +49,32 @@ struct PrettyWindow : QDialog, Localizer
 {
 	PrettyWindow(const char* name)
 	{
-		ui.setupUi(this);
-		ui.display->setGraphicsEffect(outliner = new Outliner);
-		setWindowFlags(Qt::FramelessWindowHint);
-		setAttribute(Qt::WA_TranslucentBackground);
+		ui.setupUi(this); //設定ui元件位置
+		// display 為QLabel 的名稱 
+		ui.display->setGraphicsEffect(outliner = new Outliner); //QWidget  設定視窗效果
+		setWindowFlags(Qt::FramelessWindowHint); //QWidget 設定視窗 無頭部
+		setAttribute(Qt::WA_TranslucentBackground); //QWidget 設定半透明背景
 
-		settings.beginGroup(name);
-		QFont font = ui.display->font();
+		settings.beginGroup(name); //ini 群組名稱
+		QFont font = ui.display->font(); //取得 字體
+		// 若依ini檔字型有效的話，變更成該字型
 		if (font.fromString(settings.value(FONT, font.toString()).toString())) ui.display->setFont(font);
 		SetBackgroundColor(settings.value(BG_COLOR, backgroundColor).value<QColor>());
 		SetTextColor(settings.value(TEXT_COLOR, TextColor()).value<QColor>());
+		// 取label邊框顏色
 		outliner->color = settings.value(OUTLINE_COLOR, outliner->color).value<QColor>();
 		outliner->size = settings.value(OUTLINE_SIZE, outliner->size).toDouble();
+		// 新增 menu 選單元件
 		menu.addAction(FONT, this, &PrettyWindow::RequestFont);
+		// 選擇背景，SetBackgroundColor(QColor)設定背景
 		menu.addAction(BG_COLOR, [this] { SetBackgroundColor(colorPrompt(this, backgroundColor, BG_COLOR)); });
+		// 選擇字顏色
 		menu.addAction(TEXT_COLOR, [this] { SetTextColor(colorPrompt(this, TextColor(), TEXT_COLOR)); });
+		// 設定為可勾選
 		QAction* outlineAction = menu.addAction(TEXT_OUTLINE, this, &PrettyWindow::SetOutline);
 		outlineAction->setCheckable(true);
 		outlineAction->setChecked(outliner->size >= 0);
+		// 自訂右鍵選單
 		connect(ui.display, &QLabel::customContextMenuRequested, [this](QPoint point) { menu.exec(mapToGlobal(point)); });
 	}
 
@@ -90,11 +101,11 @@ private:
 
 	void SetBackgroundColor(QColor color)
 	{
-		if (!color.isValid()) return;
-		if (color.alpha() == 0) color.setAlpha(1);
-		backgroundColor = color;
-		repaint();
-		settings.setValue(BG_COLOR, color.name(QColor::HexArgb));
+		if (!color.isValid()) return; // 驗證資料是否正確
+		if (color.alpha() == 0) color.setAlpha(1); // 設定透明度
+		backgroundColor = color; // 賦值給背景變數
+		repaint(); // 呼叫 paintEvent 
+		settings.setValue(BG_COLOR, color.name(QColor::HexArgb)); // 變更設定檔
 	};
 
 	QColor TextColor()
@@ -124,6 +135,7 @@ private:
 
 	void paintEvent(QPaintEvent*) override
 	{
+		// 變更背景
 		QPainter(this).fillRect(rect(), backgroundColor);
 	}
 
