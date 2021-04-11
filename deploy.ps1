@@ -35,7 +35,6 @@ foreach ($file in @(
 		"Qt5WebSockets.dll",
 		"Qt5Widgets.dll",
 		"libmecab.dll",
-		"libmecab.lib",
 		"mecabrc",
 		"dic",
 		"platforms",
