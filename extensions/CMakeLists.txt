@@ -7,6 +7,7 @@ find_qt5(Core Widgets WebSockets)
 #https://cmake.org/cmake/help/latest/policy/CMP0037.html
 cmake_policy(SET CMP0037 OLD)
 
+link_directories(mecab)
 #新增MODULE程式庫(dll)
 add_library(Bing\ Translate MODULE bingtranslate.cpp translatewrapper.cpp network.cpp extensionimpl.cpp)
 add_library(Copy\ to\ Clipboard MODULE copyclipboard.cpp extensionimpl.cpp)
@@ -46,7 +47,7 @@ target_precompile_headers(Thread\ Linker REUSE_FROM pch)
 target_link_libraries(Bing\ Translate winhttp Qt5::Widgets)
 target_link_libraries(DeepL\ Translate winhttp Qt5::Widgets)
 target_link_libraries(DevTools\ DeepL\ Translate shell32 winhttp Qt5::Widgets Qt5::WebSockets)
-target_link_libraries(Extra\ Window Qt5::Widgets)
+target_link_libraries(Extra\ Window Qt5::Widgets libmecab)
 target_link_libraries(Google\ Translate winhttp Qt5::Widgets)
 target_link_libraries(Lua lua53 Qt5::Widgets)
 target_link_libraries(Regex\ Filter Qt5::Widgets)
@@ -71,3 +72,6 @@ if (NOT EXISTS ${CMAKE_FINAL_OUTPUT_DIRECTORY}/Qt5WebSockets.dll AND NOT EXISTS 
         COMMAND Qt5::windeployqt --dir ${CMAKE_FINAL_OUTPUT_DIRECTORY} "${CMAKE_FINAL_OUTPUT_DIRECTORY}/DevTools\ DeepL\ Translate.dll"
     )
 endif() 
+
+file(GLOB MECAB mecab/*)
+file(COPY ${MECAB} DESTINATION ${CMAKE_FINAL_OUTPUT_DIRECTORY})
