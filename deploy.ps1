@@ -1,4 +1,5 @@
-﻿mkdir -Force -Verbose "Textractor";
+﻿Remove-Item -Recurse -Force "Textractor"
+mkdir -Force -Verbose "Textractor";
 foreach ($file in @(
 		"Textractor.exe",
 		"TextractorCLI.exe",
