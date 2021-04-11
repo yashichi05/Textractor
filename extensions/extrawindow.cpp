@@ -524,6 +524,7 @@ bool ProcessSentence(std::wstring &sentence, SentenceInfo sentenceInfo)
 		// Lambda 運算式(匿名函式)，[sentence = S(sentence)] 讓內部可使用sentence 變數
 		// invokeMethod 在extraWindow 內執行程式
 		useMecab mecabRes(sentence, extraWindow.ui.display->font().pointSize());
+		sentence += mecabRes.translate_sentence;
 		QMetaObject::invokeMethod(&extraWindow, [sentence = S(sentence)] { extraWindow.AddSentence(sentence); });
 	}
 	return false;

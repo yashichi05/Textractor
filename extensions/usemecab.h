@@ -11,7 +11,7 @@
 class useMecab
 {
 public:
-    useMecab(std::wstring &sentence, int fontSize)
+    useMecab(std::wstring &sentence, int fontSize = 16)
     {
         char *argv = "";
         mecab = mecab_new(0, &argv);
@@ -23,6 +23,7 @@ public:
         mecab_destroy(mecab);
     };
     const char *char_sentence;
+    std::wstring translate_sentence = L"";
     const mecab_node_t *node_sentence;
 
 private:
@@ -30,8 +31,12 @@ private:
     void convertStr(std::wstring &sentence)
     {
         QString input_qs(S(sentence));
-        char *char_s = new char[input_qs.toStdString().length() + 1];
-        strcpy(char_s, input_qs.toStdString().c_str());
+        QStringList text_ary = input_qs.split(QString(S(L"\x200b \n")));
+        QString origin_text = text_ary[0];
+        if (text_ary.size() > 1)
+            translate_sentence = text_ary[1].toStdWString();
+        char *char_s = new char[origin_text.toStdString().length() + 1];
+        strcpy(char_s, origin_text.toStdString().c_str());
         char_sentence = char_s;
         getMecabNode();
     };
@@ -57,7 +62,7 @@ private:
                 QStringList pronounce_list = pronounce.split(QString(","));
 
                 tr1 += "<td align=\"center\" style=\"font-size:" + QString::number(fontSize * 0.75) + "px;\">" + pronounce_list.takeLast() + "</td>";
-                tr2 += "<td align=\"center\">" + current_str + "</td>";
+                tr2 += "<td align=\"center\" style=\"white-space:nowrap;\">" + current_str + "</td>";
             }
         }
         tr1 = "<tr align=\"center\">" + tr1 + "</tr>";
