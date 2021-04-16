@@ -523,7 +523,8 @@ bool ProcessSentence(std::wstring &sentence, SentenceInfo sentenceInfo)
 		// [ a= b]{return a} https://docs.microsoft.com/zh-tw/cpp/cpp/lambda-expressions-in-cpp?view=msvc-160
 		// Lambda 運算式(匿名函式)，[sentence = S(sentence)] 讓內部可使用sentence 變數
 		// invokeMethod 在extraWindow 內執行程式
-		useMecab mecabRes(sentence, extraWindow.ui.display->font().pointSize());
+		int win_w = extraWindow.ui.display->width();
+		useMecab mecabRes(sentence, win_w, extraWindow.ui.display->font().pointSize());
 		sentence += mecabRes.translate_sentence;
 		QMetaObject::invokeMethod(&extraWindow, [sentence = S(sentence)] { extraWindow.AddSentence(sentence); });
 	}

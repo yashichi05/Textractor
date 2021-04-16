@@ -1,4 +1,5 @@
 ﻿#include "mecab/mecab.h"
+#include <math.h>
 
 #define CHECK(eval)                                               \
     if (!eval)                                                    \
@@ -11,12 +12,12 @@
 class useMecab
 {
 public:
-    useMecab(std::wstring &sentence, int fontSize = 16)
+    useMecab(std::wstring &sentence, int win_w, int fontSize = 16)
     {
         char *argv = "";
         mecab = mecab_new(0, &argv);
         convertStr(sentence);
-        outputHtml(sentence, fontSize);
+        outputHtml(sentence, fontSize, win_w);
     };
     ~useMecab()
     {
@@ -44,11 +45,15 @@ private:
     {
         node_sentence = mecab_sparse_tonode(mecab, char_sentence);
     };
-    void outputHtml(std::wstring &sentence, int fontSize)
+    void outputHtml(std::wstring &sentence, int fontSize, int win_w)
     {
+        QString style = "<style>td{padding:0 1px;white-space:nowrap;}</style>";
+        QString htmlText = "<tr>";
+        int allowTextLen = ceil(win_w / (fontSize * 2.2));
 
-        QString style = "<style>span{float:left;}</style>";
-        QString content = "";
+        int nowTableIndex = 0;
+        int nowTextCount = 0;
+        QStringList tdList;
         for (; node_sentence; node_sentence = node_sentence->next)
         {
             if (node_sentence->stat == MECAB_NOR_NODE || node_sentence->stat == MECAB_UNK_NODE)
@@ -60,10 +65,32 @@ private:
                 QString pronounce(node_sentence->feature);
                 QStringList pronounce_list = pronounce.split(QString(","));
 
-                content += "<span><div style=\"font-size:" + QString::number(fontSize * 0.75) + "px;\">" + pronounce_list.takeLast() + "</div>";
-                content += "<div style=\"white-space:nowrap;\">" + current_str + "</div></span>";
+                QString topText = "<td align=\"center\" style=\"font-size:" + QString::number(fontSize * 0.75) + "px;\">" + pronounce_list.takeLast() + "</td>";
+                QString mainText = "<td align=\"center\">" + current_str + "</td>";
+
+                nowTextCount += current_str.length();
+                if (nowTextCount > allowTextLen)
+                {
+                    tdList[nowTableIndex * 2] += "</tr>";
+                    tdList[nowTableIndex * 2 + 1] += "</tr></table>";
+                    nowTableIndex++;
+                    nowTextCount = current_str.length();
+                }
+
+                if (tdList.length() < (nowTableIndex + 1) * 2)
+                {
+                    tdList.push_back("<table><tr>" + topText);
+                    tdList.push_back("<tr>" + mainText);
+                }
+                else
+                {
+                    tdList[nowTableIndex * 2] += topText;
+                    tdList[nowTableIndex * 2 + 1] += mainText;
+                }
+                // tdList[nowRow] += topText;
+                // tdList[nowRow] += mainText;
             }
         }
-        sentence = (style + content).toStdWString();
+        sentence = (style + tdList.join("") + "</tr></table>").toStdWString();
     }
 };
