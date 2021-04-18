@@ -35,11 +35,13 @@ foreach ($file in @(
 		"Qt5Network.dll",
 		"Qt5WebSockets.dll",
 		"Qt5Widgets.dll",
+		"Qt5TextToSpeech.dll",
 		"libmecab.dll",
 		"mecabrc",
 		"dic",
 		"platforms",
 		"styles",
+		"texttospeech",
 		"mecab"
 	)) {
 	copy -Force -Recurse -Verbose -Destination "Textractor/$file" -Path "builds/_x86/$file";
