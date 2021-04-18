@@ -18,6 +18,8 @@
 extern const char *EXTRA_WINDOW_INFO;
 extern const char *SENTENCE_TOO_BIG;
 extern const char *MAX_SENTENCE_SIZE;
+extern const char *ROW_MAX_SENTENCE_SIZE;
+extern const char *SELECT_LANGUAGE;
 extern const char *TOPMOST;
 extern const char *OPACITY;
 extern const char *SHOW_ORIGINAL;
@@ -181,6 +183,8 @@ public:
 		if (settings.contains(WINDOW) && QApplication::screenAt(settings.value(WINDOW).toRect().bottomRight()))
 			setGeometry(settings.value(WINDOW).toRect());
 		maxSentenceSize = settings.value(MAX_SENTENCE_SIZE, maxSentenceSize).toInt();
+		rowMaxSentenceSize = settings.value(ROW_MAX_SENTENCE_SIZE, rowMaxSentenceSize).toInt();
+		selectLang = settings.value(SELECT_LANGUAGE, selectLang).toString();
 
 		for (auto [name, default, slot] : Array<const char *, bool, void (ExtraWindow::*)(bool)>{
 				 {TOPMOST, false, &ExtraWindow::SetTopmost},
@@ -197,6 +201,9 @@ public:
 		}
 		menu.addAction(MAX_SENTENCE_SIZE, this, [this] {
 			settings.setValue(MAX_SENTENCE_SIZE, maxSentenceSize = QInputDialog::getInt(this, MAX_SENTENCE_SIZE, "", maxSentenceSize, 0, INT_MAX, 1, nullptr, Qt::WindowCloseButtonHint));
+		});	
+		menu.addAction(ROW_MAX_SENTENCE_SIZE, this, [this] {
+			settings.setValue(ROW_MAX_SENTENCE_SIZE, rowMaxSentenceSize = QInputDialog::getInt(this, ROW_MAX_SENTENCE_SIZE, "", rowMaxSentenceSize, 0, INT_MAX, 1, nullptr, Qt::WindowCloseButtonHint));
 		});
 		ui.display->installEventFilter(this);
 		ui.display->setMouseTracking(true);
@@ -227,6 +234,9 @@ public:
 		ui.display->setText(sentence);
 	}
 
+	
+	int rowMaxSentenceSize;
+	QString selectLang;
 private:
 	void SetTopmost(bool topmost)
 	{
@@ -523,9 +533,7 @@ bool ProcessSentence(std::wstring &sentence, SentenceInfo sentenceInfo)
 		// [ a= b]{return a} https://docs.microsoft.com/zh-tw/cpp/cpp/lambda-expressions-in-cpp?view=msvc-160
 		// Lambda 運算式(匿名函式)，[sentence = S(sentence)] 讓內部可使用sentence 變數
 		// invokeMethod 在extraWindow 內執行程式
-		int win_w = extraWindow.ui.display->width();
-		useMecab mecabRes(sentence, win_w, extraWindow.ui.display->font().pointSize());
-		sentence += mecabRes.translate_sentence;
+		useMecab mecabRes(sentence, extraWindow.ui, extraWindow.rowMaxSentenceSize, extraWindow.selectLang);
 		QMetaObject::invokeMethod(&extraWindow, [sentence = S(sentence)] { extraWindow.AddSentence(sentence); });
 	}
 	return false;

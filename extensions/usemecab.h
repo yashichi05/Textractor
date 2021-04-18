@@ -1,5 +1,7 @@
 ﻿#include "mecab/mecab.h"
 #include <math.h>
+#include "ui_extrawindow.h"
+#include <QTextToSpeech>
 
 #define CHECK(eval)                                               \
     if (!eval)                                                    \
@@ -12,12 +14,20 @@
 class useMecab
 {
 public:
-    useMecab(std::wstring &sentence, int win_w, int fontSize = 16)
+    useMecab(std::wstring &sentence, Ui::ExtraWindow &ui, int rowMax, QString Lang)
     {
         char *argv = "";
+        int fontSize = ui.display->font().pointSize();
+        int row_text_size = ceil(ui.display->width() / (fontSize * 2.2));
+        if (rowMax)
+        {
+            row_text_size = rowMax;
+        }
+
         mecab = mecab_new(0, &argv);
         convertStr(sentence);
-        outputHtml(sentence, fontSize, win_w);
+        outputHtml(sentence, fontSize, row_text_size);
+        sentence += translate_sentence;
     };
     ~useMecab()
     {
@@ -28,6 +38,7 @@ public:
     const mecab_node_t *node_sentence;
 
 private:
+    QTextToSpeech *m_speech;
     mecab_t *mecab;
     void convertStr(std::wstring &sentence)
     {
@@ -45,11 +56,10 @@ private:
     {
         node_sentence = mecab_sparse_tonode(mecab, char_sentence);
     };
-    void outputHtml(std::wstring &sentence, int fontSize, int win_w)
+    void outputHtml(std::wstring &sentence, int fontSize, int allowTextLen)
     {
         QString style = "<style>td{padding:0 1px;white-space:nowrap;}</style>";
         QString htmlText = "<tr>";
-        int allowTextLen = ceil(win_w / (fontSize * 2.2));
 
         int nowTableIndex = 0;
         int nowTextCount = 0;

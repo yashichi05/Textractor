@@ -2,7 +2,7 @@
 include(QtUtils)
 #調用巨集
 msvc_registry_search()
-find_qt5(Core Widgets WebSockets)
+find_qt5(Core Widgets TextToSpeech WebSockets)
 #使用 37 規則
 #https://cmake.org/cmake/help/latest/policy/CMP0037.html
 cmake_policy(SET CMP0037 OLD)
@@ -47,7 +47,7 @@ target_precompile_headers(Thread\ Linker REUSE_FROM pch)
 target_link_libraries(Bing\ Translate winhttp Qt5::Widgets)
 target_link_libraries(DeepL\ Translate winhttp Qt5::Widgets)
 target_link_libraries(DevTools\ DeepL\ Translate shell32 winhttp Qt5::Widgets Qt5::WebSockets)
-target_link_libraries(Extra\ Window Qt5::Widgets libmecab)
+target_link_libraries(Extra\ Window Qt5::Widgets libmecab Qt5::TextToSpeech)
 target_link_libraries(Google\ Translate winhttp Qt5::Widgets)
 target_link_libraries(Lua lua53 Qt5::Widgets)
 target_link_libraries(Regex\ Filter Qt5::Widgets)
