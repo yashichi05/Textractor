@@ -1,4 +1,4 @@
-#include "qtcommon.h"
+﻿#include "qtcommon.h"
 #include "extension.h"
 #include "usemecab.h"
 #include "ui_extrawindow.h"
@@ -14,6 +14,7 @@
 #include <QFontMetrics>
 #include <QMouseEvent>
 #include <QWheelEvent>
+#include <QTextToSpeech>
 
 extern const char *EXTRA_WINDOW_INFO;
 extern const char *SENTENCE_TOO_BIG;
@@ -201,7 +202,21 @@ public:
 		}
 		menu.addAction(MAX_SENTENCE_SIZE, this, [this] {
 			settings.setValue(MAX_SENTENCE_SIZE, maxSentenceSize = QInputDialog::getInt(this, MAX_SENTENCE_SIZE, "", maxSentenceSize, 0, INT_MAX, 1, nullptr, Qt::WindowCloseButtonHint));
-		});	
+		});
+
+		const auto engines = QTextToSpeech::availableEngines();
+		m_speech = new QTextToSpeech(this);
+		const QVector<QLocale> locales = m_speech->availableLocales();
+		QStringList locales_list;
+		for (const QLocale &locale : locales)
+		{
+			locales_list.push_back(locale.name());
+		}
+		getLangSetting(locales_list);
+		menu.addAction(SELECT_LANGUAGE, this, [this, locales_list] {
+			settings.setValue(SELECT_LANGUAGE, selectLang = QInputDialog::getItem(this, SELECT_LANGUAGE, "", locales_list, this->selectLangIndex, nullptr, false, Qt::WindowCloseButtonHint));
+			this->getLangSetting(locales_list);
+		});
 		menu.addAction(ROW_MAX_SENTENCE_SIZE, this, [this] {
 			settings.setValue(ROW_MAX_SENTENCE_SIZE, rowMaxSentenceSize = QInputDialog::getInt(this, ROW_MAX_SENTENCE_SIZE, "", rowMaxSentenceSize, 0, INT_MAX, 1, nullptr, Qt::WindowCloseButtonHint));
 		});
@@ -234,10 +249,25 @@ public:
 		ui.display->setText(sentence);
 	}
 
-	
 	int rowMaxSentenceSize;
 	QString selectLang;
+	int selectLangIndex = 0;
+	QTextToSpeech *m_speech = nullptr;
+
 private:
+	void getLangSetting(QStringList list)
+	{
+		for (int i = 0; i < list.size(); i++)
+		{
+			if (selectLang == list[i])
+			{
+				selectLangIndex = i;
+				const QVector<QLocale> locales = m_speech->availableLocales();
+				m_speech->setLocale(locales[i]);
+				break;
+			}
+		}
+	};
 	void SetTopmost(bool topmost)
 	{
 		for (auto window : {winId(), dictionaryWindow.winId()})
@@ -533,7 +563,8 @@ bool ProcessSentence(std::wstring &sentence, SentenceInfo sentenceInfo)
 		// [ a= b]{return a} https://docs.microsoft.com/zh-tw/cpp/cpp/lambda-expressions-in-cpp?view=msvc-160
 		// Lambda 運算式(匿名函式)，[sentence = S(sentence)] 讓內部可使用sentence 變數
 		// invokeMethod 在extraWindow 內執行程式
-		useMecab mecabRes(sentence, extraWindow.ui, extraWindow.rowMaxSentenceSize, extraWindow.selectLang);
+
+		useMecab mecabRes(sentence, extraWindow.ui, extraWindow.m_speech, extraWindow.rowMaxSentenceSize);
 		QMetaObject::invokeMethod(&extraWindow, [sentence = S(sentence)] { extraWindow.AddSentence(sentence); });
 	}
 	return false;
