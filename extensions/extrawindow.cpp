@@ -204,7 +204,6 @@ public:
 			settings.setValue(MAX_SENTENCE_SIZE, maxSentenceSize = QInputDialog::getInt(this, MAX_SENTENCE_SIZE, "", maxSentenceSize, 0, INT_MAX, 1, nullptr, Qt::WindowCloseButtonHint));
 		});
 
-		const auto engines = QTextToSpeech::availableEngines();
 		m_speech = new QTextToSpeech(this);
 		const QVector<QLocale> locales = m_speech->availableLocales();
 		QStringList locales_list;
@@ -235,7 +234,6 @@ public:
 	{
 		settings.setValue(WINDOW, geometry());
 	}
-
 	void AddSentence(QString sentence)
 	{
 		if (sentence.size() > maxSentenceSize)
@@ -253,6 +251,7 @@ public:
 	QString selectLang;
 	int selectLangIndex = 0;
 	QTextToSpeech *m_speech = nullptr;
+	QString speakSentence;
 
 private:
 	void getLangSetting(QStringList list)
@@ -349,13 +348,17 @@ private:
 		if (useDictionary && event->type() == QEvent::MouseMove)
 			ComputeDictionaryPosition(((QMouseEvent *)event)->localPos().toPoint());
 		if (event->type() == QEvent::MouseButtonPress)
+		{
+			m_speech->say(speakSentence);
 			dictionaryWindow.hide();
+		}
 		return false;
 	}
 
 	void mousePressEvent(QMouseEvent *event) override
 	{
 		dictionaryWindow.hide();
+		m_speech->stop();
 		oldPos = event->globalPos();
 	}
 
@@ -564,8 +567,12 @@ bool ProcessSentence(std::wstring &sentence, SentenceInfo sentenceInfo)
 		// Lambda 運算式(匿名函式)，[sentence = S(sentence)] 讓內部可使用sentence 變數
 		// invokeMethod 在extraWindow 內執行程式
 
-		useMecab mecabRes(sentence, extraWindow.ui, extraWindow.m_speech, extraWindow.rowMaxSentenceSize);
-		QMetaObject::invokeMethod(&extraWindow, [sentence = S(sentence)] { extraWindow.AddSentence(sentence); });
+		useMecab mecabRes(sentence, extraWindow.ui, extraWindow.rowMaxSentenceSize);
+		QString speak_sentence = mecabRes.char_sentence;
+		QMetaObject::invokeMethod(&extraWindow, [sentence = S(sentence), speak_sentence] {
+			extraWindow.AddSentence(sentence);
+			extraWindow.speakSentence = speak_sentence;
+		});
 	}
 	return false;
 }

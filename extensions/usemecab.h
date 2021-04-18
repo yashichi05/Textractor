@@ -14,7 +14,7 @@
 class useMecab
 {
 public:
-    useMecab(std::wstring &sentence, Ui::ExtraWindow &ui,QTextToSpeech *m_speech, int rowMax)
+    useMecab(std::wstring &sentence, Ui::ExtraWindow &ui, int rowMax)
     {
         char *argv = "";
         int fontSize = ui.display->font().pointSize();
@@ -26,7 +26,6 @@ public:
 
         mecab = mecab_new(0, &argv);
         convertStr(sentence);
-        m_speech->say(char_sentence);
         outputHtml(sentence, fontSize, row_text_size);
         sentence += translate_sentence;
     };
