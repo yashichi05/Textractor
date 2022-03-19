@@ -1,8 +1,8 @@
 ﻿#include "qtcommon.h"
 #include "extension.h"
+#include "translatewrapper.h"
 #include "blockmarkup.h"
-#include "network.h"
-#include <map>
+#include <concurrent_priority_queue.h>
 #include <fstream>
 #include <QComboBox>
 
@@ -14,38 +14,51 @@ extern const char* RATE_LIMIT_ALL_THREADS;
 extern const char* RATE_LIMIT_SELECTED_THREAD;
 extern const char* USE_TRANS_CACHE;
 extern const char* FILTER_GARBAGE;
-extern const char* RATE_LIMIT_TOKEN_COUNT;
-extern const char* RATE_LIMIT_TOKEN_RESTORE_DELAY;
+extern const char* MAX_TRANSLATIONS_IN_TIMESPAN;
+extern const char* TIMESPAN;
 extern const char* MAX_SENTENCE_SIZE;
 extern const char* API_KEY;
 extern const wchar_t* TOO_MANY_TRANS_REQUESTS;
 
 extern const char* TRANSLATION_PROVIDER;
 extern const char* GET_API_KEY_FROM;
-extern QStringList languages;
-extern std::wstring autoDetectLanguage;
-extern bool translateSelectedOnly, rateLimitAll, rateLimitSelected, useCache, useFilter;
-extern int tokenCount, tokenRestoreDelay, maxSentenceSize;
-std::pair<bool, std::wstring> Translate(const std::wstring& text);
-
-// backwards compatibility
-const char* LANGUAGE = u8"Language";
-const std::string TRANSLATION_CACHE_FILE = FormatString("%s Translation Cache.txt", TRANSLATION_PROVIDER);
+extern const QStringList languagesTo, languagesFrom;
+extern bool translateSelectedOnly, useRateLimiter, rateLimitSelected, useCache, useFilter;
+extern int tokenCount, rateLimitTimespan, maxSentenceSize;
+std::pair<bool, std::wstring> Translate(const std::wstring& text, TranslationParam tlp);
 
 QFormLayout* display;
 Settings settings;
-Synchronized<std::wstring> translateTo = L"en", translateFrom = L"auto", authKey;
 
 namespace
 {
-	Synchronized<std::map<std::wstring, std::wstring>> translationCache;
-	int savedSize;
+	Synchronized<TranslationParam> tlp;
+	Synchronized<std::unordered_map<std::wstring, std::wstring>> translationCache;
+	int savedSize = 0;
+
+	std::string CacheFile()
+	{
+		return FormatString("%s Cache (%S).txt", TRANSLATION_PROVIDER, tlp->translateTo);
+	}
 	void SaveCache()
 	{
 		std::wstring allTranslations(L"\xfeff");
 		for (const auto& [sentence, translation] : translationCache.Acquire().contents)
 			allTranslations.append(L"|SENTENCE|").append(sentence).append(L"|TRANSLATION|").append(translation).append(L"|END|\r\n");
-		std::ofstream(TRANSLATION_CACHE_FILE, std::ios::binary | std::ios::trunc).write((const char*)allTranslations.c_str(), allTranslations.size() * sizeof(wchar_t));
+		std::ofstream(CacheFile(), std::ios::binary | std::ios::trunc).write((const char*)allTranslations.c_str(), allTranslations.size() * sizeof(wchar_t));
+		savedSize = translationCache->size();
+	}
+	void LoadCache()
+	{
+		translationCache->clear();
+		std::ifstream stream(CacheFile(), std::ios::binary);
+		BlockMarkupIterator savedTranslations(stream, Array<std::wstring_view>{ L"|SENTENCE|", L"|TRANSLATION|" });
+		auto translationCache = ::translationCache.Acquire();
+		while (auto read = savedTranslations.Next())
+		{
+			auto& [sentence, translation] = read.value();
+			translationCache->try_emplace(std::move(sentence), std::move(translation));
+		}
 		savedSize = translationCache->size();
 	}
 }
@@ -60,29 +73,28 @@ public:
 		settings.beginGroup(TRANSLATION_PROVIDER);
 
 		auto translateToCombo = new QComboBox(this);
-		translateToCombo->addItems(languages);
-		int language = -1;
-		if (settings.contains(LANGUAGE)) language = translateToCombo->findText(settings.value(LANGUAGE).toString(), Qt::MatchEndsWith);
-		if (settings.contains(TRANSLATE_TO)) language = translateToCombo->findText(settings.value(TRANSLATE_TO).toString(), Qt::MatchEndsWith);
-		if (language < 0) language = translateToCombo->findText(NATIVE_LANGUAGE, Qt::MatchStartsWith);
-		if (language < 0) language = translateToCombo->findText("English", Qt::MatchStartsWith);
-		translateToCombo->setCurrentIndex(language);
+		translateToCombo->addItems(languagesTo);
+		int i = -1;
+		if (settings.contains(TRANSLATE_TO)) i = translateToCombo->findText(settings.value(TRANSLATE_TO).toString());
+		if (i < 0) i = translateToCombo->findText(NATIVE_LANGUAGE, Qt::MatchStartsWith);
+		if (i < 0) i = translateToCombo->findText("English", Qt::MatchStartsWith);
+		translateToCombo->setCurrentIndex(i);
 		SaveTranslateTo(translateToCombo->currentText());
 		display->addRow(TRANSLATE_TO, translateToCombo);
 		connect(translateToCombo, &QComboBox::currentTextChanged, this, &Window::SaveTranslateTo);
-		languages.push_front("?: " + S(autoDetectLanguage));
 		auto translateFromCombo = new QComboBox(this);
-		translateFromCombo->addItems(languages);
-		language = -1;
-		if (settings.contains(TRANSLATE_FROM)) language = translateFromCombo->findText(settings.value(TRANSLATE_FROM).toString(), Qt::MatchEndsWith);
-		if (language < 0) language = translateFromCombo->findText("?", Qt::MatchStartsWith);
-		translateFromCombo->setCurrentIndex(language);
+		translateFromCombo->addItem("?");
+		translateFromCombo->addItems(languagesFrom);
+		i = -1;
+		if (settings.contains(TRANSLATE_FROM)) i = translateFromCombo->findText(settings.value(TRANSLATE_FROM).toString());
+		if (i < 0) i = 0;
+		translateFromCombo->setCurrentIndex(i);
 		SaveTranslateFrom(translateFromCombo->currentText());
 		display->addRow(TRANSLATE_FROM, translateFromCombo);
 		connect(translateFromCombo, &QComboBox::currentTextChanged, this, &Window::SaveTranslateFrom);
 		for (auto [value, label] : Array<bool&, const char*>{
 			{ translateSelectedOnly, TRANSLATE_SELECTED_THREAD_ONLY },
-			{ rateLimitAll, RATE_LIMIT_ALL_THREADS },
+			{ useRateLimiter, RATE_LIMIT_ALL_THREADS },
 			{ rateLimitSelected, RATE_LIMIT_SELECTED_THREAD },
 			{ useCache, USE_TRANS_CACHE },
 			{ useFilter, FILTER_GARBAGE }
@@ -95,8 +107,8 @@ public:
 			connect(checkBox, &QCheckBox::clicked, [label, &value](bool checked) { settings.setValue(label, value = checked); });
 		}
 		for (auto [value, label] : Array<int&, const char*>{
-			{ tokenCount, RATE_LIMIT_TOKEN_COUNT },
-			{ tokenRestoreDelay, RATE_LIMIT_TOKEN_RESTORE_DELAY },
+			{ tokenCount, MAX_TRANSLATIONS_IN_TIMESPAN },
+			{ rateLimitTimespan, TIMESPAN },
 			{ maxSentenceSize, MAX_SENTENCE_SIZE },
 		})
 		{
@@ -110,8 +122,8 @@ public:
 		if (GET_API_KEY_FROM)
 		{
 			auto keyEdit = new QLineEdit(settings.value(API_KEY).toString(), this);
-			authKey->assign(S(keyEdit->text()));
-			QObject::connect(keyEdit, &QLineEdit::textChanged, [](QString key) { settings.setValue(API_KEY, S(authKey->assign(S(key)))); });
+			tlp->authKey = S(keyEdit->text());
+			QObject::connect(keyEdit, &QLineEdit::textChanged, [](QString key) { settings.setValue(API_KEY, S(tlp->authKey = S(key))); });
 			auto keyLabel = new QLabel(QString("<a href=\"%1\">%2</a>").arg(GET_API_KEY_FROM, API_KEY), this);
 			keyLabel->setOpenExternalLinks(true);
 			display->addRow(keyLabel, keyEdit);
@@ -119,16 +131,6 @@ public:
 
 		setWindowTitle(TRANSLATION_PROVIDER);
 		QMetaObject::invokeMethod(this, &QWidget::show, Qt::QueuedConnection);
-
-		std::ifstream stream(TRANSLATION_CACHE_FILE, std::ios::binary);
-		BlockMarkupIterator savedTranslations(stream, Array<std::wstring_view>{ L"|SENTENCE|", L"|TRANSLATION|" });
-		auto translationCache = ::translationCache.Acquire();
-		while (auto read = savedTranslations.Next())
-		{
-			auto& [sentence, translation] = read.value();
-			translationCache->try_emplace(std::move(sentence), std::move(translation));
-		}
-		savedSize = translationCache->size();
 	}
 
 	~Window()
@@ -139,11 +141,13 @@ public:
 private:
 	void SaveTranslateTo(QString language)
 	{
-		settings.setValue(TRANSLATE_TO, S(translateTo->assign(S(language.split(": ")[1]))));
+		if (translationCache->size() > savedSize) SaveCache();
+		settings.setValue(TRANSLATE_TO, S(tlp->translateTo = S(language)));
+		LoadCache();
 	}
 	void SaveTranslateFrom(QString language)
 	{
-		settings.setValue(TRANSLATE_FROM, S(translateFrom->assign(S(language.split(": ")[1]))));
+		settings.setValue(TRANSLATE_FROM, S(tlp->translateFrom = S(language)));
 	}
 } window;
 
@@ -156,15 +160,19 @@ bool ProcessSentence(std::wstring& sentence, SentenceInfo sentenceInfo)
 	public:
 		bool Request()
 		{
-			auto tokens = this->tokens.Acquire();
-			tokens->push_back(GetTickCount());
-			if (tokens->size() > tokenCount * 5) tokens->erase(tokens->begin(), tokens->begin() + tokenCount * 3);
-			tokens->erase(std::remove_if(tokens->begin(), tokens->end(), [](DWORD token) { return GetTickCount() - token > tokenRestoreDelay; }), tokens->end());
-			return tokens->size() < tokenCount;
+			DWORD64 current = GetTickCount64(), token;
+			while (tokens.try_pop(token)) if (token > current - rateLimitTimespan)
+			{
+				tokens.push(token); // popped one too many
+				break;
+			}
+			bool available = tokens.size() < tokenCount;
+			if (available) tokens.push(current);
+			return available;
 		}
 
 	private:
-		Synchronized<std::vector<DWORD>> tokens;
+		concurrency::concurrent_priority_queue<DWORD64, std::greater<DWORD64>> tokens;
 	} rateLimiter;
 
 	auto Trim = [](std::wstring& text)
@@ -178,15 +186,16 @@ bool ProcessSentence(std::wstring& sentence, SentenceInfo sentenceInfo)
 	if (useFilter)
 	{
 		Trim(sentence);
-		sentence.erase(std::find_if(sentence.begin(), sentence.end(), [](wchar_t ch) { return ch < ' ' && ch != '\n'; }), sentence.end());
+		sentence.erase(std::remove_if(sentence.begin(), sentence.end(), [](wchar_t ch) { return ch < ' ' && ch != '\n'; }), sentence.end());
 	}
+	if (sentence.empty()) return true;
 	if (useCache)
 	{
 		auto translationCache = ::translationCache.Acquire();
-		if (auto it = translationCache->find(sentence); it != translationCache->end()) translation = it->second + L"\x200b"; // dumb hack to not try to translate if stored empty translation
+		if (auto it = translationCache->find(sentence); it != translationCache->end()) translation = it->second;
 	}
 	if (translation.empty() && (!translateSelectedOnly || sentenceInfo["current select"]))
-		if (rateLimiter.Request() || !rateLimitAll || (!rateLimitSelected && sentenceInfo["current select"])) std::tie(cache, translation) = Translate(sentence);
+		if (rateLimiter.Request() || !useRateLimiter || (!rateLimitSelected && sentenceInfo["current select"])) std::tie(cache, translation) = Translate(sentence, tlp.Copy());
 		else translation = TOO_MANY_TRANS_REQUESTS;
 	if (useFilter) Trim(translation);
 	if (cache) translationCache->try_emplace(sentence, translation);
@@ -197,4 +206,13 @@ bool ProcessSentence(std::wstring& sentence, SentenceInfo sentenceInfo)
 	return true;
 }
 
-TEST(assert(Translate(L"こんにちは").second.find(L"ello") != std::string::npos));
+extern const std::unordered_map<std::wstring, std::wstring> codes;
+TEST(
+	{
+		assert(Translate(L"こんにちは", { L"English", L"?", L"" }).second.find(L"ello") == 1 || strstr(TRANSLATION_PROVIDER, "DevTools"));
+
+		for (auto languages : { languagesFrom, languagesTo }) for (auto language : languages)
+			assert(codes.count(S(language)));
+		assert(codes.count(L"?"));
+	}
+);

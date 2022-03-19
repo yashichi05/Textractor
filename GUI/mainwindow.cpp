@@ -3,8 +3,9 @@
 #include "defs.h"
 #include "module.h"
 #include "extenwindow.h"
-#include "host/host.h"
-#include "host/hookcode.h"
+#include "../host/host.h"
+#include "../host/hookcode.h"
+#include "attachprocessdialog.h"
 #include <shellapi.h>
 #include <process.h>
 #include <QRegularExpression>
@@ -14,6 +15,7 @@
 #include <QDialogButtonBox>
 #include <QFileDialog>
 #include <QFontDialog>
+#include <QHash>
 
 extern const char* ATTACH;
 extern const char* LAUNCH;
@@ -28,7 +30,6 @@ extern const char* SETTINGS;
 extern const char* EXTENSIONS;
 extern const char* FONT;
 extern const char* SELECT_PROCESS;
-extern const char* ATTACH_INFO;
 extern const char* SELECT_PROCESS_INFO;
 extern const char* FROM_COMPUTER;
 extern const char* PROCESSES;
@@ -104,7 +105,7 @@ namespace
 		return { threadParam[1].toUInt(nullptr, 16), threadParam[2].toULongLong(nullptr, 16), threadParam[3].toULongLong(nullptr, 16), threadParam[4].toULongLong(nullptr, 16) };
 	}
 
-	std::array<InfoForExtension, 10> GetSentenceInfo(TextThread& thread)
+	std::array<InfoForExtension, 20> GetSentenceInfo(TextThread& thread)
 	{
 		void (*AddText)(int64_t, const wchar_t*) = [](int64_t number, const wchar_t* text)
 		{
@@ -125,11 +126,29 @@ namespace
 		{ "hook address", (int64_t)thread.tp.addr },
 		{ "text handle", thread.handle },
 		{ "text name", (int64_t)thread.name.c_str() },
+		{ "add sentence", (int64_t)AddSentence },
+		{ "add text", (int64_t)AddText },
+		{ "get selected process id", (int64_t)GetSelectedProcessId },
 		{ "void (*AddSentence)(int64_t number, const wchar_t* sentence)", (int64_t)AddSentence },
 		{ "void (*AddText)(int64_t number, const wchar_t* text)", (int64_t)AddText },
 		{ "DWORD (*GetSelectedProcessId)()", (int64_t)GetSelectedProcessId },
 		{ nullptr, 0 } // nullptr marks end of info array
 		} };
+	}
+
+	void AttachSavedProcesses()
+	{
+		std::unordered_set<std::wstring> attachTargets;
+		if (autoAttach)
+			for (auto process : QString(QTextFile(GAME_SAVE_FILE, QIODevice::ReadOnly).readAll()).split("\n", QString::SkipEmptyParts))
+				attachTargets.insert(S(process));
+		if (autoAttachSavedOnly)
+			for (auto process : QString(QTextFile(HOOK_SAVE_FILE, QIODevice::ReadOnly).readAll()).split("\n", QString::SkipEmptyParts))
+				attachTargets.insert(S(process.split(" , ")[0]));
+
+		if (!attachTargets.empty())
+			for (auto [processId, processName] : GetAllProcesses())
+				if (processName && attachTargets.count(processName.value()) > 0 && alreadyAttached.count(processId) == 0) Host::InjectProcess(processId);
 	}
 
 	std::optional<std::wstring> UserSelectedProcess()
@@ -139,7 +158,7 @@ namespace
 		savedProcesses.removeDuplicates();
 		savedProcesses.insert(1, FROM_COMPUTER);
 		QString process = QInputDialog::getItem(This, SELECT_PROCESS, SELECT_PROCESS_INFO, savedProcesses, 0, true, &ok, Qt::WindowCloseButtonHint);
-		if (process == FROM_COMPUTER) process = QDir::toNativeSeparators(QFileDialog::getOpenFileName(This, SELECT_PROCESS, "C:\\", PROCESSES));
+		if (process == FROM_COMPUTER) process = QDir::toNativeSeparators(QFileDialog::getOpenFileName(This, SELECT_PROCESS, "/", PROCESSES));
 		if (ok && process.contains('\\')) return S(process);
 		return {};
 	}
@@ -153,16 +172,31 @@ namespace
 
 	void AttachProcess()
 	{
-		QMultiHash<QString, DWORD> allProcesses;
+		QMultiHash<QString, DWORD> processesMap;
+		std::vector<std::pair<QString, HICON>> processIcons;
 		for (auto [processId, processName] : GetAllProcesses())
+		{
 			if (processName && (showSystemProcesses || processName->find(L":\\Windows\\") == std::string::npos))
-				allProcesses.insert(QFileInfo(S(processName.value())).fileName(), processId);
+			{
+				QString fileName = QFileInfo(S(processName.value())).fileName();
+				if (!processesMap.contains(fileName))
+				{
+					HICON bigIcon, smallIcon;
+					ExtractIconExW(processName->c_str(), 0, &bigIcon, &smallIcon, 1);
+					processIcons.push_back({ fileName, bigIcon ? bigIcon : smallIcon });
+				}
+				processesMap.insert(fileName, processId);
+			}
+		}
+		std::sort(processIcons.begin(), processIcons.end(), [](auto one, auto two) { return QString::compare(one.first, two.first, Qt::CaseInsensitive) < 0; });
 
-		QStringList processList(allProcesses.uniqueKeys());
-		processList.sort(Qt::CaseInsensitive);
-		if (QString process = QInputDialog::getItem(This, SELECT_PROCESS, ATTACH_INFO, processList, 0, true, &ok, Qt::WindowCloseButtonHint); ok)
-			if (process.toInt(nullptr, 0)) Host::InjectProcess(process.toInt(nullptr, 0));
-			else for (auto processId : allProcesses.values(process)) Host::InjectProcess(processId);
+		AttachProcessDialog attachProcessDialog(This, processIcons);
+		if (attachProcessDialog.exec())
+		{
+			QString process = attachProcessDialog.SelectedProcess();
+			if (int processId = process.toInt(nullptr, 0)) Host::InjectProcess(processId);
+			else for (int processId : processesMap.values(process)) Host::InjectProcess(processId);
+		}
 	}
 
 	void LaunchProcess()
@@ -650,23 +684,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
 				else for (auto [processId, processName] : processes)
 					if (processName.value_or(L"").find(L"\\" + arg.substr(2)) != std::string::npos) Host::InjectProcess(processId);
 
-	std::thread([]
-	{
-		for (; ; Sleep(10000))
-		{
-			std::unordered_set<std::wstring> attachTargets;
-			if (autoAttach)
-				for (auto process : QString(QTextFile(GAME_SAVE_FILE, QIODevice::ReadOnly).readAll()).split("\n", QString::SkipEmptyParts))
-					attachTargets.insert(S(process));
-			if (autoAttachSavedOnly)
-				for (auto process : QString(QTextFile(HOOK_SAVE_FILE, QIODevice::ReadOnly).readAll()).split("\n", QString::SkipEmptyParts))
-					attachTargets.insert(S(process.split(" , ")[0]));
-
-			if (!attachTargets.empty())
-				for (auto [processId, processName] : GetAllProcesses())
-					if (processName && attachTargets.count(processName.value()) > 0 && alreadyAttached.count(processId) == 0) Host::InjectProcess(processId);
-		}
-	}).detach();
+	std::thread([] { for (; ; Sleep(10000)) AttachSavedProcesses(); }).detach();
 }
 
 MainWindow::~MainWindow()

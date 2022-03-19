@@ -45,11 +45,14 @@ foreach ($language in @{
 			"Copy to Clipboard",
 			"DeepL Translate",
 			"DevTools DeepL Translate",
+			"DevTools Papago Translate",
+			"DevTools Systran Translate",
 			"Extra Newlines",
 			"Extra Window",
 			"Google Translate",
 			"Lua",
 			"Regex Filter",
+			"Regex Replacer",
 			"Remove Repeated Characters",
 			"Remove Repeated Phrases",
 			"Remove Repeated Phrases 2",
@@ -65,7 +68,6 @@ foreach ($language in @{
 	&"C:\Program Files (x86)\Windows Kits\10\App Certification Kit\signtool.exe" sign /a /v /t "http://timestamp.digicert.com"  /fd SHA256 @(dir "$folder\**\*");
 }
 
-
 rm -Force -Recurse -Verbose "Runtime";
 mkdir -Force -Verbose "Runtime";
 foreach ($arch in @("x86", "x64"))
@@ -78,6 +80,7 @@ foreach ($arch in @("x86", "x64"))
 		"Qt5Gui.dll",
 		"Qt5Network.dll",
 		"Qt5WebSockets.dll",
+		"Qt5WinExtras.dll"
 		"Qt5Widgets.dll",
 		"platforms",
 		"styles"
@@ -85,13 +88,13 @@ foreach ($arch in @("x86", "x64"))
 	{
 		copy -Force -Recurse -Verbose -Destination "Runtime/$arch/$file" -Path "Release_$arch/$file";
 	}
-	copy -Force -Recurse -Verbose -Destination "$arch" -Path "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Redist/MSVC/**/$arch/Microsoft.VC142.CRT/*"
+	copy -Force -Recurse -Verbose -Destination "Runtime/$arch" -Path "C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Redist/MSVC/**/$arch/Microsoft.VC142.CRT/*"
 }
 
 rm -Force -Recurse -Verbose "Textractor";
 mkdir -Force -Verbose "Textractor";
 copy -Force -Recurse -Verbose -Destination "Textractor" -Path @("Runtime/*", "Textractor--$version/*");
-&"C:\Program Files\7-Zip\7z" a "Textractor-$version-Zip-Version-English-Only.zip" Textractor/
+&"C:\Program Files\7-Zip\7z" a "Textractor-$version-Zip-Version-English-Only.zip" Textractor/ ../INSTALL_THIS_UNICODE_FONT.ttf
 
 cd ..;
 &"C:\Program Files (x86)\Inno Setup 6\iscc" -DVERSION="$version" installer.iss;

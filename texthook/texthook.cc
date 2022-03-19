@@ -6,6 +6,7 @@
 #include "texthook.h"
 #include "main.h"
 #include "ithsys/ithsys.h"
+#include "MinHook.h"
 
 extern const char* FUNC_MISSING;
 extern const char* MODULE_MISSING;
@@ -307,7 +308,7 @@ int TextHook::GetLength(uintptr_t base, uintptr_t in)
 		else {
 			if (hp.type & BIG_ENDIAN)
 				in >>= 8;
-			len = LeadByteTable[in & 0xff];  //Slightly faster than IsDBCSLeadByte
+			len = !!IsDBCSLeadByteEx(hp.codepage, in & 0xff) + 1;
 		}
 		break;
 	}

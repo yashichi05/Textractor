@@ -1,54 +1,126 @@
 #include "qtcommon.h"
+#include "translatewrapper.h"
 #include "network.h"
 #include <random>
 
 extern const wchar_t* TRANSLATION_ERROR;
-extern const char* USE_PREV_SENTENCE_CONTEXT;
-
-extern Synchronized<std::wstring> translateTo, translateFrom, authKey;
 
 const char* TRANSLATION_PROVIDER = "DeepL Translate";
-const char* GET_API_KEY_FROM = "https://www.deepl.com/pro.html";
-QStringList languages
+const char* GET_API_KEY_FROM = "https://www.deepl.com/pro.html#developer";
+extern const QStringList languagesTo
 {
-	"Chinese: ZH",
-	"Dutch: NL",
-	"English: EN",
-	"French: FR",
-	"German: DE",
-	"Italian: IT",
-	"Japanese: JA",
-	"Polish: PL",
-	"Portuguese: PT",
-	"Russian: RU",
-	"Spanish: ES",
+	"Bulgarian",
+	"Chinese (Simplified)",
+	"Czech",
+	"Danish",
+	"Dutch",
+	"English (American)",
+	"English (British)",
+	"Estonian",
+	"Finnish",
+	"French",
+	"German",
+	"Greek",
+	"Hungarian",
+	"Italian",
+	"Japanese",
+	"Latvian",
+	"Lithuanian",
+	"Polish",
+	"Portuguese (Brazil)",
+	"Portuguese (Portugal)",
+	"Romanian",
+	"Russian",
+	"Slovak",
+	"Slovenian",
+	"Spanish",
+	"Swedish"
+},
+languagesFrom
+{
+	"Bulgarian",
+	"Chinese",
+	"Czech",
+	"Danish",
+	"Dutch",
+	"English",
+	"Estonian",
+	"Finnish",
+	"French",
+	"German",
+	"Greek",
+	"Hungarian",
+	"Italian",
+	"Japanese",
+	"Latvian",
+	"Lithuanian",
+	"Polish",
+	"Portuguese",
+	"Romanian",
+	"Russian",
+	"Slovak",
+	"Slovenian",
+	"Spanish",
+	"Swedish"
 };
-std::wstring autoDetectLanguage = L"auto";
+extern const std::unordered_map<std::wstring, std::wstring> codes
+{
+	{ { L"Bulgarian" }, { L"BG" } },
+	{ { L"Chinese" }, { L"ZH" } },
+	{ { L"Chinese (Simplified)" }, { L"ZH" } },
+	{ { L"Czech" }, { L"CS" } },
+	{ { L"Danish" }, { L"DA" } },
+	{ { L"Dutch" }, { L"NL" } },
+	{ { L"English" }, { L"EN" } },
+	{ { L"English (American)" }, { L"EN-US" } },
+	{ { L"English (British)" }, { L"EN-GB" } },
+	{ { L"Estonian" }, { L"ET" } },
+	{ { L"Finnish" }, { L"FI" } },
+	{ { L"French" }, { L"FR" } },
+	{ { L"German" }, { L"DE" } },
+	{ { L"Greek" }, { L"EL" } },
+	{ { L"Hungarian" }, { L"HU" } },
+	{ { L"Italian" }, { L"IT" } },
+	{ { L"Japanese" }, { L"JA" } },
+	{ { L"Latvian" }, { L"LV" } },
+	{ { L"Lithuanian" }, { L"LT" } },
+	{ { L"Polish" }, { L"PL" } },
+	{ { L"Portuguese" }, { L"PT" } },
+	{ { L"Portuguese (Brazil)" }, { L"PT-BR" } },
+	{ { L"Portuguese (Portugal)" }, { L"PT-PT" } },
+	{ { L"Romanian" }, { L"RO" } },
+	{ { L"Russian" }, { L"RU" } },
+	{ { L"Slovak" }, { L"SK" } },
+	{ { L"Slovenian" }, { L"SL" } },
+	{ { L"Spanish" }, { L"ES" } },
+	{ { L"Swedish" }, { L"SV" } },
+	{ { L"?" }, { L"auto" } }
+};
 
-bool translateSelectedOnly = true, rateLimitAll = true, rateLimitSelected = true, useCache = true, useFilter = true;
-int tokenCount = 10, tokenRestoreDelay = 60000, maxSentenceSize = 1000;
+bool translateSelectedOnly = true, useRateLimiter = true, rateLimitSelected = true, useCache = true, useFilter = true;
+int tokenCount = 10, rateLimitTimespan = 60000, maxSentenceSize = 1000;
 
 enum KeyType { CAT, REST };
-int keyType = CAT;
+int keyType = REST;
 
-std::pair<bool, std::wstring> Translate(const std::wstring& text)
+std::pair<bool, std::wstring> Translate(const std::wstring& text, TranslationParam tlp)
 {
-	if (!authKey->empty())
+	if (!tlp.authKey.empty())
 	{
-		std::string translateFromComponent = translateFrom.Copy() == autoDetectLanguage ? "" : "&source_lang=" + WideStringToString(translateFrom.Copy());
+		std::string translateFromComponent = tlp.translateFrom == L"?" ? "" : "&source_lang=" + WideStringToString(codes.at(tlp.translateFrom));
 		if (HttpRequest httpRequest{
 			L"Mozilla/5.0 Textractor",
-			L"api.deepl.com",
+			tlp.authKey.find(L":fx") == std::string::npos ? L"api.deepl.com" : L"api-free.deepl.com",
 			L"POST",
 			keyType == CAT ? L"/v1/translate" : L"/v2/translate",
-			FormatString("text=%S&auth_key=%S&target_lang=%S", Escape(text), authKey.Copy(), translateTo.Copy()) + translateFromComponent,
+			FormatString("text=%S&auth_key=%S&target_lang=%S", Escape(text), tlp.authKey, codes.at(tlp.translateTo)) + translateFromComponent,
 			L"Content-Type: application/x-www-form-urlencoded"
-		}; httpRequest && (!httpRequest.response.empty() || (httpRequest = HttpRequest{
+		}; httpRequest && (httpRequest.response.find(L"translations") != std::string::npos || (httpRequest = HttpRequest{
 			L"Mozilla/5.0 Textractor",
-			L"api.deepl.com",
+			tlp.authKey.find(L":fx") == std::string::npos ? L"api.deepl.com" : L"api-free.deepl.com",
 			L"POST",
 			(keyType = !keyType) == CAT ? L"/v1/translate" : L"/v2/translate",
-			FormatString("text=%S&auth_key=%S&target_lang=%S", Escape(text), authKey.Copy(), translateTo.Copy()) + translateFromComponent,
+			FormatString("text=%S&auth_key=%S&target_lang=%S", Escape(text), tlp.authKey, codes.at(tlp.translateTo)) + translateFromComponent,
 			L"Content-Type: application/x-www-form-urlencoded"
 		})))
 			// Response formatted as JSON: translation starts with text":" and ends with "}]
@@ -58,9 +130,8 @@ std::pair<bool, std::wstring> Translate(const std::wstring& text)
 	}
 
 	// the following code was reverse engineered from the DeepL website; it's as close as I could make it but I'm not sure what parts of this could be removed and still have it work
+	int id = 10000 * std::uniform_int_distribution(0, 9999)(std::random_device()) + 1;
 	int64_t r = _time64(nullptr), n = std::count(text.begin(), text.end(), L'i') + 1;
-	thread_local auto generator = std::mt19937(std::random_device()());
-	int id = 10000 * std::uniform_int_distribution(0, 9999)(generator) + 1;
 	// user_preferred_langs? what should priority be? does timestamp do anything? other translation quality options?
 	auto body = FormatString(R"(
 {
@@ -71,7 +142,7 @@ std::pair<bool, std::wstring> Translate(const std::wstring& text)
 		"priority": -1,
 		"timestamp": %lld,
 		"lang": {
-			"target_lang": "%S",
+			"target_lang": "%.2S",
 			"source_lang_user_selected": "%S"
 		},
 		"jobs": [{
@@ -84,7 +155,7 @@ std::pair<bool, std::wstring> Translate(const std::wstring& text)
 		}]
 	}
 }
-	)", id, r + (n - r % n), translateTo.Copy(), translateFrom.Copy(), JSON::Escape(WideStringToString(text)));
+	)", id, r + (n - r % n), codes.at(tlp.translateTo), codes.at(tlp.translateFrom), JSON::Escape(WideStringToString(text)));
 	// missing accept-encoding header since it fucks up HttpRequest
 	if (HttpRequest httpRequest{
 		L"Mozilla/5.0 Textractor",

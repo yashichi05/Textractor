@@ -12,9 +12,9 @@ extern const char* CURRENT_FILTER;
 const char* REGEX_SAVE_FILE = "SavedRegexFilters.txt";
 
 std::optional<std::wregex> regex;
-std::wstring replace;
-std::shared_mutex m;
-DWORD (*GetSelectedProcessId)() = nullptr;
+std::wstring replace = L"$1";
+concurrency::reader_writer_lock m;
+DWORD (*GetSelectedProcessId)() = [] { return 0UL; };
 
 class Window : public QDialog, Localizer
 {
@@ -56,7 +56,7 @@ private:
 
 bool ProcessSentence(std::wstring& sentence, SentenceInfo sentenceInfo)
 {
-	static auto _ = GetSelectedProcessId = (DWORD(*)())sentenceInfo["DWORD (*GetSelectedProcessId)()"];
+	static auto _ = GetSelectedProcessId = (DWORD(*)())sentenceInfo["get selected process id"];
 	if (sentenceInfo["text number"] == 0) return false;
 	if (/*sentenceInfo["current select"] && */!regex) if (auto processName = GetModuleFilename(sentenceInfo["process id"]))
 	{
@@ -66,7 +66,7 @@ bool ProcessSentence(std::wstring& sentence, SentenceInfo sentenceInfo)
 		while (auto read = savedFilters.Next()) if (read->at(0) == processName) regexes.push_back(std::move(read->at(1)));
 		if (!regexes.empty()) QMetaObject::invokeMethod(&window, std::bind(&Window::SetRegex, &window, S(regexes.back())), Qt::BlockingQueuedConnection);
 	}
-	std::shared_lock lock(m);
+	concurrency::reader_writer_lock::scoped_lock_read readLock(m);
 	if (regex) sentence = std::regex_replace(sentence, regex.value(), replace);
 	return true;
 }

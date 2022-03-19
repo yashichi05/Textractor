@@ -10,7 +10,7 @@ BOOL WINAPI DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved
 	{
 		wchar_t filePath[MAX_PATH];
 		GetModuleFileNameW(hModule, filePath, MAX_PATH);
-		if (wchar_t* fileName = wcsrchr(filePath, L'\\')) swscanf_s(fileName, L"\\Remove %d Repeated Sentences.dll", &sentenceCacheSize);
+		if (wchar_t* fileName = wcsrchr(filePath, L'\\')) swscanf_s(fileName, L"\\Remove %d Repeated Sentences.xdll", &sentenceCacheSize);
 	}
 	break;
 	case DLL_PROCESS_DETACH:
@@ -30,7 +30,7 @@ bool ProcessSentence(std::wstring& sentence, SentenceInfo sentenceInfo)
 	static std::mutex m;
 	m.lock();
 	if (textNumber + 1 > cache.size()) cache.resize(textNumber + 1);
-	auto prevSentences = cache.at(textNumber).Acquire();
+	auto prevSentences = cache[textNumber].Acquire();
 	m.unlock();
 	auto& inserted = prevSentences->emplace_back(sentence);
 	auto firstLocation = std::find(prevSentences->begin(), prevSentences->end(), sentence);
