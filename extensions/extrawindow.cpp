@@ -15,6 +15,13 @@
 #include <QWheelEvent>
 #include <QScrollArea>
 #include <QAbstractNativeEventFilter>
+// mecab start
+#include "usemecab.h"
+#include <QTextToSpeech>
+extern const char* ROW_MAX_SENTENCE_SIZE;
+extern const char* KATAKANA_SIZE;
+extern const char* SELECT_LANGUAGE;
+// mecab end
 
 extern const char* EXTRA_WINDOW_INFO;
 extern const char* TOPMOST;
@@ -193,9 +200,15 @@ class ExtraWindow : public PrettyWindow, QAbstractNativeEventFilter
 public:
 	ExtraWindow() : PrettyWindow("Extra Window")
 	{
-		ui.display->setTextFormat(Qt::PlainText);
+		// mecab start
+		ui.display->setTextFormat(Qt::RichText);
+		// mecab end
 		if (settings.contains(WINDOW) && QApplication::screenAt(settings.value(WINDOW).toRect().bottomRight())) setGeometry(settings.value(WINDOW).toRect());
-
+		// mecab start
+		rowMaxText = settings.value(ROW_MAX_SENTENCE_SIZE, rowMaxText).toInt();
+		katakanaSize = settings.value(KATAKANA_SIZE, katakanaSize).toInt();
+		selectLang = settings.value(SELECT_LANGUAGE, selectLang).toString();
+		// mecab end
 		for (auto [name, default, slot] : Array<const char*, bool, void(ExtraWindow::*)(bool)>{
 			{ TOPMOST, false, &ExtraWindow::SetTopmost },
 			{ SIZE_LOCK, false, &ExtraWindow::SetSizeLock },
@@ -213,7 +226,26 @@ public:
 			action->setCheckable(true);
 			action->setChecked(default);
 		}
-
+        // mecab start
+		m_speech = new QTextToSpeech(this);
+		const QVector<QLocale> locales = m_speech->availableLocales();
+		QStringList locales_list;
+		for (const QLocale &locale : locales)
+		{
+			locales_list.push_back(locale.name());
+		}
+		getLangSetting(locales_list);
+		menu.addAction(SELECT_LANGUAGE, this, [this, locales_list] {
+			settings.setValue(SELECT_LANGUAGE, selectLang = QInputDialog::getItem(this, SELECT_LANGUAGE, "", locales_list, this->selectLangIndex, nullptr, false, Qt::WindowCloseButtonHint));
+			this->getLangSetting(locales_list);
+		});
+		menu.addAction(ROW_MAX_SENTENCE_SIZE, this, [this] {
+			settings.setValue(ROW_MAX_SENTENCE_SIZE, rowMaxText = QInputDialog::getInt(this, ROW_MAX_SENTENCE_SIZE, "", rowMaxText, 0, INT_MAX, 1, nullptr, Qt::WindowCloseButtonHint));
+		});
+		menu.addAction(KATAKANA_SIZE, this, [this] {
+			settings.setValue(KATAKANA_SIZE, katakanaSize = QInputDialog::getInt(this, KATAKANA_SIZE, "", katakanaSize, 0, INT_MAX, 1, nullptr, Qt::WindowCloseButtonHint));
+		});
+		// mecab end
 		menu.addAction(CLICK_THROUGH, this, &ExtraWindow::ToggleClickThrough);
 
 		ui.display->installEventFilter(this);
@@ -242,7 +274,30 @@ public:
 		DisplaySentence();
 	}
 
+	// mecab start
+	int rowMaxText;
+	int katakanaSize;
+	int selectLangIndex = 0;
+	QString selectLang;
+	QTextToSpeech *m_speech = nullptr;
+	QString speakSentence;
+	// mecab end
 private:
+	// mecab start
+	void getLangSetting(QStringList list)
+	{
+		for (int i = 0; i < list.size(); i++)
+		{
+			if (selectLang == list[i])
+			{
+				selectLangIndex = i;
+				const QVector<QLocale> locales = m_speech->availableLocales();
+				m_speech->setLocale(locales[i]);
+				break;
+			}
+		}
+	};
+	// mecab end
 	void DisplaySentence()
 	{
 		if (sentenceHistory.empty()) return;
@@ -406,6 +461,10 @@ private:
 	{
 		dictionaryWindow.hide();
 		oldPos = event->globalPos();
+		// mecab start
+		m_speech->stop();
+        m_speech->say(speakSentence);
+		// mecab end
 	}
 
 	void mouseMoveEvent(QMouseEvent* event) override
@@ -598,7 +657,13 @@ private:
 
 bool ProcessSentence(std::wstring& sentence, SentenceInfo sentenceInfo)
 {
-	if (sentenceInfo["current select"] && sentenceInfo["text number"] != 0)
+	if (sentenceInfo["current select"] && sentenceInfo["text number"] != 0) {
 		QMetaObject::invokeMethod(&extraWindow, [sentence = S(sentence)] { extraWindow.AddSentence(sentence); });
+        // mecab start
+		useMecab mecabRes(sentence, extraWindow.ui, extraWindow.rowMaxText, extraWindow.katakanaSize);
+		QString speak_sentence = mecabRes.char_sentence;
+		QMetaObject::invokeMethod(&extraWindow, [sentence = S(sentence), speak_sentence] { extraWindow.AddSentence(sentence);extraWindow.speakSentence = speak_sentence; });
+		// mecab end    
+    }
 	return false;
 }
