@@ -4,7 +4,7 @@
 
 [English](README.md) ● [Español](README_ES.md) ● [简体中文](README_SC.md) ● [Русский](README_RU.md) ● [한국어](README_KR.md) ● [ภาษาไทย](README_TH.md) ● [Français](README_FR.md) ● [Italiano](README_IT.md) ● [日本語](README_JP.md) ● [Bahasa Indonesia](README_ID.md) ● [Português](README_PT.md)
 
-**Textractor** (a.k.a NextHooker) adalah text hooker video game untuk Windows/Wine x86/x64 berbasis open-source yang didasari oleh [ITHVNR](https://web.archive.org/web/20160202084144/http://www.hongfire.com/forum/showthread.php/438331-ITHVNR-ITH-with-the-VNR-engine).<br>
+**Textractor** (a.k.a NextHooker) adalah teks hooker video game untuk Windows/Wine x86/x64 berbasis open-source yang didasari oleh [ITHVNR](https://web.archive.org/web/20160202084144/http://www.hongfire.com/forum/showthread.php/438331-ITHVNR-ITH-with-the-VNR-engine).<br>
 Lihat [video tutorial](docs/TUTORIAL.md) untuk mengetahui bagaimana cara menggunakannya.
 
 ## Pengunduhan
@@ -21,36 +21,33 @@ Rilisan Terakhir ITHVNR dapat diunduh [disini](https://drive.google.com/open?id=
 
 ## Dukungan
 
-Please let me know of any bugs, games that Textractor has trouble hooking, feature requests, or other suggestions.<br>
-If you have trouble hooking a game please email me a place where I can freely download it, or gift it to me on [Steam](https://steamcommunity.com/profiles/76561198097566313/).
-
-Tolong beritahu saya jika kamu menemukan bug, game yang tidak dapat di tempel oleh Textractor, permintaan fitur, atau usulan lain.<br>
-Jika kamu memiliki masalah dalam menempelkan kedalam game tolong email saya link agar saya dapat mendownload game tersebut, atau gift game tersebut di [Steam](https://steamcommunity.com/profiles/76561198097566313/).
+Tolong beritahu saya jika kamu menemukan kutu, game yang tidak dapat di tempel oleh Textractor, permintaan fitur, atau usulan lain.<br>
+Jika kamu memiliki masalah dalam menempelkan kedalam game tolong email saya link agar saya dapat mengunduh game tersebut, atau hadiahkan game tersebut di [Steam](https://steamcommunity.com/profiles/76561198097566313/).
 
 ## Ekstensi
 
 Lihat [project sampel ekstensi saya](https://github.com/Artikash/ExampleExtension) untuk melihat bagaimana cara membuat ekstensi.<br>
-Lihat folder extensions untuk melihat sampel ekstensi.
+Lihat ekstensi folder untuk melihat sampel ekstensi.
 
 ## Kontribusi
 
-Seluruh kontribusi diapresiasi! Tolong email saya di akashmozumdar@gmail.com jika kamu memiliki pertanyaan mengenai codebase nya.<br>
-Kamu harus menggunakan proses standar dalam membuat permintaan pull(fork, branch, commit changes, membuat PR dari branch kamu ke master saya).<br>
+Seluruh kontribusi diapresiasi! Tolong email saya di akashmozumdar@gmail.com jika kamu memiliki pertanyaan mengenai kode dasar nya.<br>
+Kamu harus menggunakan proses standar dalam membuat permintaan pull(fork, cabang, perubahan commit, membuat PR dari cabang kamu ke master saya).<br>
 Berkontribusi dalam penerjemahan dapat dilakukan dengan mudah : cukup terjemahkan string dari text.cpp lalu terjemahkan README ini.
 
-## Compiling
+## Mengcompile
 
 Sebelum melakukan proses compile *Textractor*, kamu harus memiliki Visual Studio dengan dukungan Cmake, juga dengan Qt version 5.13<br>
-Lalu kamu dapat membuka folder di Visual Studio, dan build. Run Textractor.exe.
+Lalu kamu dapat membuka folder di Visual Studio, dan build. Jalankan Textractor.exe.
 
 
 ## Arsitektur Project
 
-Host (lihat folder host) menginject texthook.dll (dibuat dari folder texthook) kedalam target process dan disambungkan lewat 2 file pipe.<br>
+Host (lihat folder host) menyuntikan texthook.dll (dibuat dari folder texthook) kedalam target proses dan disambungkan lewat 2 file pipe.<br>
 Host menulis ke hostPipe, texthook menulis ke hookPipe.<br>
-texthook menunggu pipe tersambung, lalu menginject beberapa instruksi ke teks yang menghasilkan fungsi (contoh: TextOut, GetGlyphOutline) yang membuat input dikirim melewati pipa.<br>
+texthook menunggu pipe tersambung, lalu menyuntikan beberapa instruksi ke teks yang menghasilkan fungsi (contoh: TextOut, GetGlyphOutline) yang membuat input dikirim melewati pipa.<br>
 Informasi tambahan tentang hook dipindahkan melewati shared memory.<br>
-Text yang diterima host melewati pipe lalu diproses lagi sebelum dikembalikan ke GUI.<br>
-Dan pada akhirnya, GUI melepas text ke ekstensi sebelum menampilkan teks.
+Teks yang diterima host melewati pipe lalu diproses lagi sebelum dikembalikan ke GUI.<br>
+Dan pada akhirnya, GUI melepas teks ke ekstensi sebelum menampilkan teks.
 
 ## [Pengembang](docs/CREDITS.md)
