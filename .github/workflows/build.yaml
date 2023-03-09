@@ -13,10 +13,19 @@ jobs:
       #     arch: win64_msvc2019_64
       - name: 下載必要檔案
         run: |
+          cd ~
           Invoke-WebRequest -Uri https://github.com/yashichi05/Mecab_Lib/raw/main/mecab.7z -OutFile m.7z
           Invoke-WebRequest -Uri https://www.7-zip.org/a/7z1900-x64.exe -OutFile 7z.exe
-          7z.exe /S
+          7z.exe
           ls "C:\Program Files\7-Zip"
+          $ENV:Path = $ENV:Path + "C:\Program Files\7-Zip;"
+          ./7z e mecab.7z
       - name: 檢查分支
         uses: actions/checkout@v2
+      - name: 編譯 
+        run: |
+          ls
+          mv ~/mecab extensions/
+          ls extensions
+      
       
