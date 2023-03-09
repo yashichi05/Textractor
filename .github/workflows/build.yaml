@@ -28,7 +28,7 @@ jobs:
         run: |
           ls
           mv ~/mecab extensions/
-          cmake --build . --config Release
+          cmake --build c:/Users/Yeh/Videos/Textractor/build --config Release --target ALL_BUILD -j 8 --
           ls
       
       
