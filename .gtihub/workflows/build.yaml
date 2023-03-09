@@ -1,0 +1,23 @@
+name: build action
+on:
+  push:
+    branches: [ mecab ]
+jobs:
+  build_web:
+    name: 編譯程式
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v3
+        with:
+          arch: win64_msvc2019_64
+      - name: 下載mecab
+        run: |
+          curl -o extensions/mecab.7z https://github.com/yashichi05/Mecab_Lib/raw/main/mecab.7z
+          apt-get update
+          apt-get install unrar
+          cd extensions
+          unrar e mecab.7z
+          ls
+          
+
