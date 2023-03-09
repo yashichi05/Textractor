@@ -19,7 +19,7 @@ jobs:
           7z.exe
           $ENV:Path = $ENV:Path + "C:\Program Files\7-Zip;"
           ls
-          ./7z e mecab.7z
+          7z e mecab.7z
       - name: 檢查分支
         uses: actions/checkout@v2
       - name: 編譯 
