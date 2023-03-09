@@ -7,10 +7,16 @@ jobs:
     name: 編譯程式
     runs-on: windows-2019
     steps:
-      - name: Install Qt
-        uses: jurplel/install-qt-action@v3
-        with:
-          arch: win64_msvc2019_64
-      - name: 下載mecab
-        run: ls
-
+      # - name: Install Qt
+      #   uses: jurplel/install-qt-action@v3
+      #   with:
+      #     arch: win64_msvc2019_64
+      - name: 下載必要檔案
+        run: |
+          Invoke-WebRequest -Uri https://github.com/yashichi05/Mecab_Lib/raw/main/mecab.7z -OutFile m.7z
+          Invoke-WebRequest -Uri https://www.7-zip.org/a/7z1900-x64.exe -OutFile 7z.exe
+          7z.exe /S
+          ls "C:\Program Files\7-Zip"
+      - name: 檢查分支
+        uses: actions/checkout@v2
+      
