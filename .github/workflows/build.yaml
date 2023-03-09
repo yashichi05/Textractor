@@ -26,6 +26,7 @@ jobs:
         run: |
           ls
           mv ~/mecab extensions/
-          ls extensions
+          cmake --build . --config Release
+          ls
       
       
