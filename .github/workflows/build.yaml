@@ -28,7 +28,7 @@ jobs:
         run: |
           ls
           mv ~/mecab extensions/
-          mkdir build
+          cmake --no-warn-unused-cli -DCMAKE_EXPORT_COMPILE_COMMANDS:BOOL=TRUE -SC:/Users/Yeh/Videos/Textractor -Bc:/Users/Yeh/Videos/Textractor/build -G "Visual Studio 16 2019" -T host=x86 -A win32
           cmake build --config Release --target ALL_BUILD
           ls
       
