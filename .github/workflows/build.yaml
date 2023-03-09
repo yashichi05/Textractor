@@ -29,6 +29,8 @@ jobs:
           ls
           mv ~/mecab extensions/
           cmake --no-warn-unused-cli -DCMAKE_EXPORT_COMPILE_COMMANDS:BOOL=TRUE -S ./ -B build -T host=x64 -A win32
+          cat D:/a/Textractor/Textractor/build/CMakeFiles/CMakeOutput.log
+          cmake --build build --config Release --target ALL_BUILD
           ls
       
       
