@@ -463,7 +463,9 @@ private:
 		oldPos = event->globalPos();
 		// mecab start
 		m_speech->stop();
-        m_speech->say(speakSentence);
+		if(event->button() == Qt::LeftButton){
+        	m_speech->say(speakSentence);
+		}
 		// mecab end
 	}
 
@@ -661,7 +663,7 @@ bool ProcessSentence(std::wstring& sentence, SentenceInfo sentenceInfo)
 		QMetaObject::invokeMethod(&extraWindow, [sentence = S(sentence)] { extraWindow.AddSentence(sentence); });
         // mecab start
 		useMecab mecabRes(sentence, extraWindow.ui, extraWindow.rowMaxText, extraWindow.katakanaSize);
-		QString speak_sentence = mecabRes.char_sentence;
+		QString speak_sentence = mecabRes.totalPronounce;
 		QMetaObject::invokeMethod(&extraWindow, [sentence = S(sentence), speak_sentence] { extraWindow.AddSentence(sentence);extraWindow.speakSentence = speak_sentence; });
 		// mecab end    
     }
