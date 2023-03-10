@@ -23,6 +23,8 @@ jobs:
           git submodule update --init
           mv ~/mecab ./extensions/mecab
           ls ./extensions/mecab > mecab.txt
+          ls ./extensions > ext.txt
+          ls . > main.txt
 
       - name: 結果
         uses: actions/upload-artifact@v3
