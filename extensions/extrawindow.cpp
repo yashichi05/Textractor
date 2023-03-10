@@ -21,6 +21,7 @@
 extern const char* ROW_MAX_SENTENCE_SIZE;
 extern const char* KATAKANA_SIZE;
 extern const char* SELECT_LANGUAGE;
+constexpr int HOT_KEY_SPEAK = 0xc0d1;
 // mecab end
 
 extern const char* EXTRA_WINDOW_INFO;
@@ -254,6 +255,9 @@ public:
 		QMetaObject::invokeMethod(this, [this]
 		{
 			RegisterHotKey((HWND)winId(), CLICK_THROUGH_HOTKEY, MOD_ALT | MOD_NOREPEAT, 0x58);
+			// mecab start
+			RegisterHotKey(0, HOT_KEY_SPEAK, MOD_NOREPEAT, 0x14);
+			// mecab end
 			show();
 			AddSentence(EXTRA_WINDOW_INFO);
 		}, Qt::QueuedConnection);
@@ -441,6 +445,8 @@ private:
 		auto msg = (MSG*)message;
 		if (msg->message == WM_HOTKEY)
 			if (msg->wParam == CLICK_THROUGH_HOTKEY) return ToggleClickThrough(), true;
+			// mecab start
+			else if (msg->wParam == HOT_KEY_SPEAK) return m_speech->stop(),m_speech->say(speakSentence), true;// mecab end
 		return false;
 	}
 
