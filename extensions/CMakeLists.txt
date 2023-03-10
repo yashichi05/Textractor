@@ -67,6 +67,8 @@ add_custom_target(Cleaner ALL COMMAND del *.xdll WORKING_DIRECTORY ${CMAKE_FINAL
 if (NOT EXISTS ${CMAKE_FINAL_OUTPUT_DIRECTORY}/Qt5WebSockets.dll AND NOT EXISTS ${CMAKE_FINAL_OUTPUT_DIRECTORY}/Qt5WebSocketsd.dll)
     add_custom_command(TARGET DevTools\ DeepL\ Translate
         POST_BUILD
+        COMMAND ls ${CMAKE_CURRENT_BINARY_DIR}
+        COMMAND ls ${CMAKE_FINAL_OUTPUT_DIRECTORY}
         COMMAND ${CMAKE_COMMAND} -E remove_directory "${CMAKE_CURRENT_BINARY_DIR}/windeployqt"
         COMMAND set PATH=%PATH%$<SEMICOLON>${qt5_install_prefix}/bin
         COMMAND Qt5::windeployqt --dir ${CMAKE_FINAL_OUTPUT_DIRECTORY} "${CMAKE_FINAL_OUTPUT_DIRECTORY}/DevTools\ DeepL\ Translate.dll"
