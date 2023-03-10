@@ -34,7 +34,7 @@ public:
         mecab_destroy(mecab);
     };
     const char *char_sentence;
-    Qstring totalPronounce = "";
+    QString totalPronounce = "";
     std::wstring translate_sentence = L"\x200b \n";
     const mecab_node_t *node_sentence;
     
