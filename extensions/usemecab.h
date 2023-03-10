@@ -34,7 +34,7 @@ public:
         mecab_destroy(mecab);
     };
     const char *char_sentence;
-    Qstring totalPronounce = ""
+    Qstring totalPronounce = "";
     std::wstring translate_sentence = L"\x200b \n";
     const mecab_node_t *node_sentence;
     
@@ -74,7 +74,7 @@ private:
                 current_str.truncate(node_sentence->length / 3);
                 QString pronounce(node_sentence->feature);
                 QStringList pronounce_list = pronounce.split(QString(","));
-                totalPronounce += pronounce_list.takeLast()
+                totalPronounce += pronounce_list.takeLast();
                 QString topText = "<td align=\"center\" style=\"font-size:" + QString::number(kanaSize == 0?(fontSize * 0.75):kanaSize) + "px;\">" + pronounce_list.takeLast() + "</td>";
                 QString mainText = "<td align=\"center\">" + current_str + "</td>";
 
