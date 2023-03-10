@@ -11,10 +11,6 @@ jobs:
         uses: jurplel/install-qt-action@v3
         with:
           arch: win64_msvc2019_64
-      - name: test
-        run: |
-          ls
-          echo $pwd
       - name: 下載必要檔案
         run: |
           cd ~
