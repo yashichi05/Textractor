@@ -15,8 +15,8 @@ jobs:
           arch: win64_msvc2019_64
       - name: 下載必要檔案
         run: |
-          echo $RUNNER_WORKSPACE
-          ls $RUNNER_WORKSPACE
+          echo $GITHUB_WORKSPACE
+          ls $GITHUB_WORKSPACE
           cd ~
           Invoke-WebRequest -Uri https://github.com/yashichi05/Mecab_Lib/raw/main/mecab.7z -OutFile m.7z
           Invoke-WebRequest -Uri https://www.7-zip.org/a/7z1900-x64.exe -OutFile 7z.exe
