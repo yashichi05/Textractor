@@ -10,7 +10,7 @@ jobs:
       - name: Install Qt
         uses: jurplel/install-qt-action@v3
         with:
-          arch: win32_msvc2017
+          arch: win32_msvc2019
       - name: 下載必要檔案
         run: |
           cd ~
@@ -25,7 +25,7 @@ jobs:
         run: |
           git submodule update --init
           mv ~/mecab extensions/
-          cmake --no-warn-unused-cli -DCMAKE_EXPORT_COMPILE_COMMANDS:BOOL=TRUE -S ./ -B build -T host=x64 -G "Visual Studio 15 2017" -A win32
+          cmake --no-warn-unused-cli -DCMAKE_EXPORT_COMPILE_COMMANDS:BOOL=TRUE -S ./ -B build -T host=x64 -G "Visual Studio 16 2019" -A win32
           cmake --build build --config Release --target ALL_BUILD
           $ErrorActionPreference = "Continue"
           ./deploy_mecab.ps1
