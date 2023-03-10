@@ -21,6 +21,7 @@ jobs:
       - name: 編譯 
         run: |
           git submodule update --init
+          ls ~/mecab > mecab0.txt
           mv ~/mecab ./extensions/mecab
           ls ./extensions/mecab > mecab.txt
           ls ./extensions > ext.txt
