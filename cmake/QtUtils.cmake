@@ -37,6 +37,7 @@ macro(msvc_registry_search)
 				set(QT_SUFFIX "")
 			endif()
 
+			SET(QT_SUFFIX "_64")
 			# MSVC 2015+ is only backwards compatible
 			if(EXISTS "${QT_VERSION}/msvc${QT_MSVC}${QT_SUFFIX}")
 				set(Qt5_DIR "${QT_VERSION}/msvc${QT_MSVC}${QT_SUFFIX}/lib/cmake/Qt5")
