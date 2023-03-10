@@ -15,7 +15,7 @@ jobs:
           Invoke-WebRequest -Uri https://www.7-zip.org/a/7z1900-x64.exe -OutFile 7z.exe
           7z.exe
           $ENV:Path = $ENV:Path + "C:\Program Files\7-Zip;"
-          7z e m.7z
+          7z x m.7z
       - name: 檢查分支
         uses: actions/checkout@v3
       - name: 編譯 
