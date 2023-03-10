@@ -32,7 +32,7 @@ jobs:
         with:
           name: result
           path: |
-            mecab2.txt
+            mecab0.txt
             mecab.txt
             ext.txt
             main.txt
