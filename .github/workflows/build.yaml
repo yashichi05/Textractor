@@ -24,10 +24,17 @@ jobs:
       - name: 編譯 
         run: |
           git submodule update --init
-          mv ~/mecab extensions/mecab
+          mv ~/mecab ./extensions/mecab
+          ls ./extensions/mecab > mecab.txt
           cmake --no-warn-unused-cli -DCMAKE_EXPORT_COMPILE_COMMANDS:BOOL=TRUE -S ./ -B build -T host=x64 -G "Visual Studio 16 2019" -A win32
           cat D:/a/Textractor/Textractor/build/CMakeFiles/CMakeOutput.log
           cmake --build build --config Release --target ALL_BUILD
-
+            - name: Archive production artifacts
+      - name: 結果
+        uses: actions/upload-artifact@v3
+        with:
+          name: result
+          path: |
+            mecab.txt
       
       
