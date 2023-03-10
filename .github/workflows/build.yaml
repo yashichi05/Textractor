@@ -7,34 +7,8 @@ jobs:
     name: 編譯程式
     runs-on: windows-2019
     steps:
-
       - name: 下載必要檔案
         run: |
-          cd ~
-          Invoke-WebRequest -Uri https://github.com/yashichi05/Mecab_Lib/raw/main/mecab.7z -OutFile m.7z
-          Invoke-WebRequest -Uri https://www.7-zip.org/a/7z1900-x64.exe -OutFile 7z.exe
-          7z.exe
-          $ENV:Path = $ENV:Path + "C:\Program Files\7-Zip;"
-          7z x m.7z
-      - name: 檢查分支
-        uses: actions/checkout@v3
-      - name: 編譯 
-        run: |
-          git submodule update --init
-          ls ~/mecab > mecab0.txt
-          mv ~/mecab ./extensions/mecab
-          ls ./extensions/mecab > mecab.txt
-          ls ./extensions > ext.txt
-          ls . > main.txt
-
-      - name: 結果
-        uses: actions/upload-artifact@v3
-        with:
-          name: result
-          path: |
-            mecab0.txt
-            mecab.txt
-            ext.txt
-            main.txt
+          Get-ExecutionPolicy
       
       
