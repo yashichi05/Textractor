@@ -8,10 +8,8 @@ macro(msvc_registry_search)
 		list(GET QT_BIN 0 QT_BIN)
 		if(NOT EXISTS QT_BIN)
 			file(REAL_PATH "../../Qt" QT_BIN)
-			message(WARNING "${QT_BIN}")
 		endif()
 		file(GLOB QT_VERSIONS "${QT_BIN}/5.1*")
-		message(WARNING "${QT_VERSIONS}")
 		list(SORT QT_VERSIONS)
 
 		# assume the latest version will be last alphabetically
