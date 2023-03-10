@@ -7,6 +7,8 @@ jobs:
     name: 編譯程式
     runs-on: windows-2019
     steps:
+      - name: Install msvc
+        uses: ilammy/msvc-dev-cmd@v1
       - name: Install Qt
         uses: jurplel/install-qt-action@v3
         with:
