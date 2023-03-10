@@ -7,8 +7,31 @@ jobs:
     name: 編譯程式
     runs-on: windows-2019
     steps:
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v3
+        with:
+          arch: win32_msvc2019
       - name: 下載必要檔案
         run: |
-          Get-ExecutionPolicy
+          cd ~
+          Invoke-WebRequest -Uri https://github.com/yashichi05/Mecab_Lib/raw/main/mecab.7z -OutFile m.7z
+          Invoke-WebRequest -Uri https://www.7-zip.org/a/7z1900-x64.exe -OutFile 7z.exe
+          7z.exe
+          $ENV:Path = $ENV:Path + "C:\Program Files\7-Zip;"
+          7z x m.7z
+      - name: 檢查分支
+        uses: actions/checkout@v3
+      - name: 編譯 
+        run: |
+          git submodule update --init
+          mv ~/mecab extensions/
+          cmake --no-warn-unused-cli -DCMAKE_EXPORT_COMPILE_COMMANDS:BOOL=TRUE -S ./ -B build -T host=x64 -G "Visual Studio 16 2019" -A win32
+          cat D:/a/Textractor/Textractor/build/CMakeFiles/CMakeOutput.log
+          cmake --build build --config Release --target ALL_BUILD
+      - name: 結果
+        uses: actions/upload-artifact@v3
+        with:
+          name: result
+          path: Textractor
       
       
