@@ -30,6 +30,8 @@ jobs:
           cmake -S ./ -B build -G "Visual Studio 16 2019" -A win32
       - name: 編譯 
         run: |
+          $ErrorActionPreference = "Continue"
+          cmake --build build --config Release --target ALL_BUILD
           cmake --build build --config Release --target ALL_BUILD
       - name: 複製 
         run: |
