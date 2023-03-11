@@ -27,7 +27,7 @@ jobs:
         run: |
           git submodule update --init
           mv ~/mecab extensions/
-          $QT_CMAKE="..\Qt\Tools\CMake_64\bin\cmake.exe"
+          ls ..\Qt\Tools\CMake_64\bin\cmake.exe
           & $QT_CMAKE -S ./ -B build -G "Visual Studio 16 2019" -A win32
       - name: 編譯 
         run: |
