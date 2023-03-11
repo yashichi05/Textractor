@@ -30,7 +30,7 @@ jobs:
           cmake -S ./ -B build -G "Visual Studio 16 2019" -A win32
       - name: 編譯 
         run: |
-          msbuild Textractor.sln /p:Configuration=Release /p:Platform="win32"
+          msbuild ./build/Textractor.sln /p:Configuration=Release /p:Platform="win32"
       - name: 複製 
         run: |
           $ErrorActionPreference = "Continue"
