@@ -9,13 +9,6 @@ jobs:
     steps:
       - name: Install msvc
         uses: ilammy/msvc-dev-cmd@v1
-      - uses: lukka/get-cmake@latest
-        with:
-          cmakeVersion: 3.19
-          ninjaVersion: latest
-      - name: aa 
-        run: |
-          cmake -version
       - name: Install Qt
         uses: jurplel/install-qt-action@v3
         with:
@@ -35,17 +28,17 @@ jobs:
           git submodule update --init
           mv ~/mecab extensions/
           cmake -S ./ -B build -G "Visual Studio 16 2019" -A win32
-      # - name: 編譯 
-      #   run: |
-      #     cmake --build build --config Release --target ALL_BUILD
-      # - name: 複製 
-      #   run: |
-      #     $ErrorActionPreference = "Continue"
-      #     ./deploy_mecab.ps1
+      - name: 編譯 
+        run: |
+          cmake --build build --config Release --target ALL_BUILD
+      - name: 複製 
+        run: |
+          $ErrorActionPreference = "Continue"
+          ./deploy_mecab.ps1
       - name: 結果
         uses: actions/upload-artifact@v3
         with:
           name: result
-          path: build
+          path: Textractor
       
       
