@@ -13,6 +13,9 @@ jobs:
         with:
           cmakeVersion: 3.19
           ninjaVersion: latest
+      - name: aa 
+        run: |
+          cmake -version
       - name: Install Qt
         uses: jurplel/install-qt-action@v3
         with:
