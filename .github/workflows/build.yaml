@@ -21,17 +21,19 @@ jobs:
           7z.exe
           $ENV:Path = $ENV:Path + "C:\Program Files\7-Zip;"
           7z x m.7z
+      - name: ff
+        shell: cmd
+        run: call vcvarsall.bat
       - name: 檢查分支
         uses: actions/checkout@v3
       - name: 初始化 
         run: |
           git submodule update --init
           mv ~/mecab extensions/
-          ls ..\..\Qt
-          & $QT_CMAKE -S ./ -B build -G "Visual Studio 16 2019" -A win32
+          cmake -S ./ -B build -G "Visual Studio 16 2019" -A win32
       - name: 編譯 
         run: |
-          & $QT_CMAKE --build build --config Release --target ALL_BUILD
+          cmake --build build --config Release --target ALL_BUILD
       - name: 複製 
         run: |
           $ErrorActionPreference = "Continue"
