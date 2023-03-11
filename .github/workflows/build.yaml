@@ -39,8 +39,6 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: result
-          path: |
-            build
-            builds
+          path: Textractor
       
       
