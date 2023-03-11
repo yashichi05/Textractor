@@ -7,11 +7,9 @@ macro(msvc_registry_search)
 		string(REPLACE "/Tools" ";" QT_BIN "${QT_BIN}")
 		
 		list(GET QT_BIN 0 QT_BIN)
-		message(WARNING "folder:${QT_BIN}")
-		if("" STREQUAL "QT_BIN")
+		if("" STREQUAL "${QT_BIN}")
 			file(REAL_PATH "../../Qt" QT_BIN)
 		endif()
-		message(WARNING "folder:${QT_BIN}")
 		file(GLOB QT_VERSIONS "${QT_BIN}/5.1*")
 		list(SORT QT_VERSIONS)
 
