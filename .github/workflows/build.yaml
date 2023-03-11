@@ -15,7 +15,7 @@ jobs:
           arch: win32_msvc2019
       - name: ff
         run: |
-          cl
+          msbuild
       # - name: 下載必要檔案
       #   run: |
       #     cd ~
