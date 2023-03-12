@@ -74,12 +74,13 @@ private:
                 current_str.truncate(node_sentence->length / 3);
                 QString pronounce(node_sentence->feature);
                 QStringList pronounce_list = pronounce.split(QString(","));
-                if(pronounce_list.takeLast() == "*") {
+                auto pronounce_list_last = pronounce_list.takeLast();
+                if(pronounce_list_last == "*") {
                     totalPronounce += current_str;
                 } else {
-                    totalPronounce += pronounce_list.takeLast();
+                    totalPronounce += pronounce_list_last;
                 }
-                QString topText = "<td align=\"center\" style=\"font-size:" + QString::number(kanaSize == 0?(fontSize * 0.75):kanaSize) + "px;\">" + pronounce_list.takeLast() + "</td>";
+                QString topText = "<td align=\"center\" style=\"font-size:" + QString::number(kanaSize == 0?(fontSize * 0.75):kanaSize) + "px;\">" + pronounce_list_last + "</td>";
                 QString mainText = "<td align=\"center\">" + current_str + "</td>";
 
                 nowTextCount += current_str.length();

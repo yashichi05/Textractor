@@ -35,7 +35,6 @@ jobs:
           cmake --build build --config Release --target ALL_BUILD
       - name: 複製 
         run: |
-          $ErrorActionPreference = "Continue"
           ./deploy_mecab.ps1
           7z a Textractor.7z Textractor
       - name: 結果
