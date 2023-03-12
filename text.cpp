@@ -20,6 +20,7 @@
 // If you are updating a previous translation see https://github.com/Artikash/Textractor/issues/313
 // mecab start
 const char* ROW_MAX_SENTENCE_SIZE = u8"Row max text";
+const char* SPEAK_HOTKEY = u8"Speak Hotkey";
 const char* SELECT_LANGUAGE = u8"Select language";
 const char* KATAKANA_SIZE = u8"pronunciation font size";
 // mecab end

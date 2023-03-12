@@ -19,6 +19,7 @@
 #include "usemecab.h"
 #include <QTextToSpeech>
 extern const char* ROW_MAX_SENTENCE_SIZE;
+extern const char* SPEAK_HOTKEY;
 extern const char* KATAKANA_SIZE;
 extern const char* SELECT_LANGUAGE;
 constexpr int HOT_KEY_SPEAK = 0xc0d1;
@@ -207,6 +208,7 @@ public:
 		if (settings.contains(WINDOW) && QApplication::screenAt(settings.value(WINDOW).toRect().bottomRight())) setGeometry(settings.value(WINDOW).toRect());
 		// mecab start
 		rowMaxText = settings.value(ROW_MAX_SENTENCE_SIZE, rowMaxText).toInt();
+		speakHotkey = settings.value(SPEAK_HOTKEY, speakHotkey).toInt();
 		katakanaSize = settings.value(KATAKANA_SIZE, katakanaSize).toInt();
 		selectLang = settings.value(SELECT_LANGUAGE, selectLang).toString();
 		// mecab end
@@ -243,6 +245,11 @@ public:
 		menu.addAction(ROW_MAX_SENTENCE_SIZE, this, [this] {
 			settings.setValue(ROW_MAX_SENTENCE_SIZE, rowMaxText = QInputDialog::getInt(this, ROW_MAX_SENTENCE_SIZE, "", rowMaxText, 0, INT_MAX, 1, nullptr, Qt::WindowCloseButtonHint));
 		});
+		menu.addAction(SPEAK_HOTKEY, this, [this] {
+			UnregisterHotKey(0, HOT_KEY_SPEAK);
+			settings.setValue(SPEAK_HOTKEY, speakHotkey = QInputDialog::getInt(this, SPEAK_HOTKEY, "", speakHotkey, 0, INT_MAX, 1, nullptr, Qt::WindowCloseButtonHint));
+			RegisterHotKey(0, HOT_KEY_SPEAK, MOD_NOREPEAT, speakHotkey);
+		});
 		menu.addAction(KATAKANA_SIZE, this, [this] {
 			settings.setValue(KATAKANA_SIZE, katakanaSize = QInputDialog::getInt(this, KATAKANA_SIZE, "", katakanaSize, 0, INT_MAX, 1, nullptr, Qt::WindowCloseButtonHint));
 		});
@@ -256,7 +263,7 @@ public:
 		{
 			RegisterHotKey((HWND)winId(), CLICK_THROUGH_HOTKEY, MOD_ALT | MOD_NOREPEAT, 0x58);
 			// mecab start
-			RegisterHotKey(0, HOT_KEY_SPEAK, MOD_NOREPEAT, 0x14);
+			RegisterHotKey(0, HOT_KEY_SPEAK, MOD_NOREPEAT, speakHotkey);
 			// mecab end
 			show();
 			AddSentence(EXTRA_WINDOW_INFO);
@@ -280,6 +287,7 @@ public:
 
 	// mecab start
 	int rowMaxText;
+	int speakHotkey = 0x05;
 	int katakanaSize;
 	int selectLangIndex = 0;
 	QString selectLang;
@@ -446,7 +454,8 @@ private:
 		if (msg->message == WM_HOTKEY)
 			if (msg->wParam == CLICK_THROUGH_HOTKEY) return ToggleClickThrough(), true;
 			// mecab start
-			else if (msg->wParam == HOT_KEY_SPEAK) return m_speech->stop(),m_speech->say(speakSentence), true;// mecab end
+			else if (msg->wParam == HOT_KEY_SPEAK) return m_speech->stop(),m_speech->say(speakSentence), true;
+			// mecab end
 		return false;
 	}
 
