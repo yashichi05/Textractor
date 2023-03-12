@@ -37,10 +37,11 @@ jobs:
         run: |
           $ErrorActionPreference = "Continue"
           ./deploy_mecab.ps1
+          7z a Textractor.7z Textractor
       - name: 結果
         uses: actions/upload-artifact@v3
         with:
           name: result
-          path: Textractor
+          path: Textractor.7z
       
       
