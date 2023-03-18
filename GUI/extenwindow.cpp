@@ -118,6 +118,14 @@ bool DispatchSentenceToExtensions(std::wstring& sentence, const InfoForExtension
 	wchar_t* sentenceBuffer = (wchar_t*)HeapAlloc(GetProcessHeap(), HEAP_GENERATE_EXCEPTIONS, (sentence.size() + 1) * sizeof(wchar_t));
 	wcscpy_s(sentenceBuffer, sentence.size() + 1, sentence.c_str());
 	concurrency::reader_writer_lock::scoped_lock_read readLock(extenMutex);
+	// mecab start
+	const std::wstring targetName = L"Extra Window";
+	for (const auto& extension : extensions)
+		if(!extension.name.compare(targetName))
+		{
+			extension.callback(sentenceBuffer, sentenceInfo);
+		}
+	// mecab end
 	for (const auto& extension : extensions)
 		if (!*(sentenceBuffer = extension.callback(sentenceBuffer, sentenceInfo))) break;
 	sentence = sentenceBuffer;

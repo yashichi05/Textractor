@@ -675,7 +675,6 @@ private:
 bool ProcessSentence(std::wstring& sentence, SentenceInfo sentenceInfo)
 {
 	if (sentenceInfo["current select"] && sentenceInfo["text number"] != 0) {
-		QMetaObject::invokeMethod(&extraWindow, [sentence = S(sentence)] { extraWindow.AddSentence(sentence); });
         // mecab start
 		useMecab mecabRes(sentence, extraWindow.ui, extraWindow.rowMaxText, extraWindow.katakanaSize);
 		QString speak_sentence = mecabRes.totalPronounce;
