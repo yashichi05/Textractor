@@ -121,14 +121,14 @@ bool DispatchSentenceToExtensions(std::wstring& sentence, const InfoForExtension
 	// mecab start
 	Extension ew;
 	for (const auto& extension : extensions)
-		if(!extension.name.compare(L"Extra Window"))
+		if(extension.name == L"Extra Window")
 		{
 			ew = extension;
 		}
 
 	for (const auto& extension : extensions)
 	{
-		if(extension.name.find(L"Translate") != std::wstring::npos)
+		if(extension.name.find(L"Translate") != std::wstring::npos && ew.name != L"")
 		{
 			ew.callback(sentenceBuffer, sentenceInfo);
 		}
