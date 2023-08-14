@@ -25,8 +25,12 @@ public:
         }
 
         mecab = mecab_new(0, &argv);
-        convertStr(sentence);
-        outputHtml(sentence, fontSize, row_text_size, katakanaSize);
+        try {
+            convertStr(sentence);
+            outputHtml(sentence, fontSize, row_text_size, katakanaSize);
+        } catch (std::exception &e) {
+            translate_sentence += L"Mecab Error";
+        }
         sentence += translate_sentence;
     };
     ~useMecab()
