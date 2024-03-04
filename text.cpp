@@ -99,6 +99,7 @@ const char* DEFAULT_CODEPAGE = u8"Default codepage";
 const char* FLUSH_DELAY = u8"Flush delay";
 const char* MAX_BUFFER_SIZE = u8"Max buffer size";
 const char* MAX_HISTORY_SIZE = u8"Max history size";
+const char* LIMIT_STRING_LENGTH = u8"Limit string length (0=Off)";
 const char* CONFIG_JP_LOCALE = u8"Launch with JP locale";
 const wchar_t* CONSOLE = L"Console";
 const wchar_t* CLIPBOARD = L"Clipboard";

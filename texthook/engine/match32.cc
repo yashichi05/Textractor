@@ -65,7 +65,8 @@ bool DeterminePCEngine()
 	  else for (int i = 0; i < 50; ++i)
 		  if (HMODULE module = GetModuleHandleW((DXVersion + L"_" + std::to_wstring(i)).c_str())) PcHooks::hookD3DXFunctions(module);
 
-  for (HMODULE module : { (HMODULE)processStartAddress, GetModuleHandleW(L"node.dll"), GetModuleHandleW(L"nw.dll") })
+  if (!Util::SearchResourceString(L"TVP(KIRIKIRI)")) // Hijack ERROR for some kirikiri engine on V8Hook check
+    for (HMODULE module : { (HMODULE)processStartAddress, GetModuleHandleW(L"node.dll"), GetModuleHandleW(L"nw.dll") })
 	  if (GetProcAddress(module, "?Write@String@v8@@QBEHPAGHHH@Z")) return InsertV8Hook(module);
 
   if (InsertMonoHooks()) {
@@ -80,6 +81,12 @@ bool DeterminePCEngine()
       return true;
   }
 
+  if (Util::SearchResourceString(L"ONScripter-RU") || Util::SearchResourceString(L"onscripter-ru.exe"))
+  {
+    InsertONScripterruHooks();
+    return true;
+  }
+
   // PC games
   PcHooks::hookGDIFunctions();
   PcHooks::hookGDIPlusFunctions();
@@ -90,7 +97,7 @@ bool DetermineEngineByFile1()
 {
 	if (Util::SearchResourceString(L"Proportional ONScripter") || Util::SearchResourceString(L"ponscr.exe"))
 	{
-		InsertPONScripterHook();
+		InsertPONScripterHooks();
 		return true;
 	}
   // Artikash 7/14/2018: AIRNovel - sample game https://vndb.org/v18814
@@ -150,7 +157,7 @@ bool DetermineEngineByFile1()
     return true;
   }
   if (Util::CheckFile(L"data*.arc") && Util::CheckFile(L"stream*.arc")) {
-    InsertMajiroHook();
+    InsertMajiroHooks();
     return true;
   }
   // jichi 5/31/2014
@@ -163,7 +170,7 @@ bool DetermineEngineByFile1()
   // jichi 6/9/2015: Skip Silkys Sakura
   if ( // Almost the same as Silkys except mes.arc is replaced by Script.arc
       Util::CheckFile(L"data.arc") && Util::CheckFile(L"effect.arc") && Util::CheckFile(L"Script.arc")) {
-    InsertSilkysHook();
+    InsertSilkysHooks();
     return true;
   }
   if (Util::CheckFile(L"data\\pack\\*.cpz")) {
@@ -181,8 +188,8 @@ bool DetermineEngineByFile1()
     return true;
   }
   if (Util::CheckFile(L"AdvData\\GRP\\NAMES.DAT")) {
-    InsertCircusHook2();
-    return true;
+    if (InsertCircusHook2() || InsertCircusHook3() || InsertCircusHook4())
+      return true;
   }
   if (Util::CheckFile(L"*.noa") || Util::CheckFile(L"data\\*.noa")) {
     InsertCotophaHook();
@@ -192,12 +199,20 @@ bool DetermineEngineByFile1()
     InsertArtemisHook();
     return true;
   }
-  if (Util::CheckFile(L"*.int") && InsertCatSystemHook()) {
+  if (Util::CheckFile(L"*.int") && InsertCatSystemHooks()) {
     return true;
   }
   if (Util::CheckFile(L"message.dat")) {
-    InsertAtelierHook();
+    InsertAtelierHooks();
     return true;
+  }
+  if (Util::CheckFile(L"game_sys.exe") && Util::SearchResourceString(L"KaGuYa")) {
+    if (InsertAtelierGSHooks() )
+      return true;
+  }
+  if (Util::CheckFile(L"ADV10.EXE") && Util::SearchResourceString(L"KaGuYa")) {
+    if (InsertAtelierADV10Hook() )
+      return true;
   }
   if (Util::CheckFile(L"Check.mdx")) { // jichi 4/1/2014: AUGame
     InsertTencoHook();
@@ -221,7 +236,7 @@ bool DetermineEngineByFile1()
 
     if (Util::CheckFile(L"Thumbnail.pac")) {
       //ConsoleOutput("vnreng: IGNORE NeXAS");
-      InsertNeXASHook(); // jichi 7/6/2014: GIGA
+      InsertNeXASHooks(); // jichi 7/6/2014: GIGA
       return true;
     }
 
@@ -281,8 +296,9 @@ bool DetermineEngineByFile2()
     InsertWaffleHook();
     return true;
   }
-  if (Util::CheckFile(L"Arc00.dat") && InsertTinkerBellHook()) {
-    return true;
+  if (Util::CheckFile(L"Arc00.dat") || Util::SearchResourceString(L"TinkerBell")) {
+    if(InsertTinkerBellHook())
+      return true;
   }
   if (Util::CheckFile(L"*.vfs")) { // jichi 7/6/2014: Better to test AoiLib.dll? ja.wikipedia.org/wiki/ソフトハウスキャラ
     InsertSystemAoiHook();
@@ -296,11 +312,11 @@ bool DetermineEngineByFile2()
   if (Util::CheckFile(L"pac\\*.ypf") || Util::CheckFile(L"*.ypf")) {
     // jichi 8/14/2013: CLOCLUP: "ノーブレスオブリージュ" would crash the game.
     if (!Util::CheckFile(L"noblesse.exe"))
-      InsertYurisHook();
-    return true;
+      if (InsertYurisHook())
+        return true;
   }
   if (Util::CheckFile(L"*.npa")) {
-    InsertNitroplusHook();
+    InsertNitroplusHooks();
     return true;
   }
   return false;
@@ -341,11 +357,11 @@ bool DetermineEngineByFile3()
     return true;
   }
   if (Util::CheckFile(L"*.mpk")) {
-    InsertStuffScriptHook();
+    InsertStuffScriptHooks();
     return true;
   }
   if (Util::CheckFile(L"USRDIR\\*.mpk")) { // jichi 12/2/2014
-    InsertStuffScriptHook();
+    InsertStuffScriptHooks();
     return true;
   }
   if (Util::CheckFile(L"Execle.exe")) {
@@ -370,6 +386,106 @@ bool DetermineEngineByFile3()
 
 bool DetermineEngineByFile4()
 {
+  if (Util::CheckFile(L"*.paz")) {
+    if (InsertMinoriHooks())
+      return true;
+  }
+  if (Util::SearchResourceString(L"でぼの巣製作所")) {
+    if (InsertDebonosuWorksHook())
+      return true;
+  }
+  if (Util::CheckFile(L"*.iga")) {
+    if (InsertLucaSystemHook())
+      return true;
+  }
+  if (Util::CheckFile(L"*.pak")) {
+    if (InsertKogadoHook())
+      return true;
+  }
+  if (Util::CheckFile(L"sysd.ini")) {
+    if (InsertSysdHook())
+      return true;
+  }
+  if (Util::CheckFile(L"GameData/*.arc")) {
+    if (InsertKissHook())
+      return true;
+  }
+  if (Util::SearchResourceString(L" KID")) {
+    if (InsertKidHook())
+      return true;
+  }
+  if (Util::CheckFile(L"ism.dll")) {
+    if (InsertISMscriptHooks())
+      return true;
+  }
+  if (Util::SearchResourceString(L"Nitro+") && Util::CheckFile(L"system.dll")) {
+    if (InsertNitroplusSysHook())
+      return true;
+  }
+  if (Util::CheckFile(L"pix.bin")) {
+    if (InsertTrianglePixHook())
+      return true;
+  }
+  if (Util::CheckFile(L"Packs/*.GPK")) {
+    if (InsertSekaiProjectHooks())
+      return true;
+  }
+  if (Util::CheckFile(L"Data/*.pck")) {
+    if (InsertAquaplusHooks())
+      return true;
+  }
+  if (Util::CheckFile(L"fsroot*")) {
+    if (InsertOtomeHook())
+      return true;
+  }
+  if (Util::CheckFile(L"*.bsa")) {
+    if (InsertBishopHook())
+      return true;
+  }
+  if (Util::CheckFile(L"arc/evimage.dat")) {
+    if (InsertYaneSDKHook())
+      return true;
+  }
+  if (Util::CheckFile(L"sys/kidoku.dat")) {
+    if (InsertCielHooks())
+      return true;
+  }
+  if (Util::CheckFile(L"A98SYS.PAK")) {
+    if (InsertA98sysHook())
+      return true;
+  }
+  if (Util::CheckFile(L"Ages3ResT.dll")) {
+    if (InsertAges7Hook())
+      return true;
+  }
+  if (Util::CheckFile(L"*.xfl")) {
+    if (InsertCodeXHook())
+      return true;
+  }
+  if (Util::CheckFile(L"*.bcx")) {
+    if (InsertDxLibHook())
+      return true;
+  }
+  if (Util::CheckFile(L"windata/script_body.bin")) {
+    if (InsertKaleidoHook())
+      return true;
+  }
+  if (Util::CheckFile(L"GMResource.dll")) {
+    if (InsertGameMakerHook())
+      return true;
+  }
+  if (Util::CheckFile(L"*.rgssad")) {
+    if (InsertRpgmXPHook())
+      return true;
+  }
+  if (Util::CheckFile(L"nya/configse.xtx")) {
+    if (InsertSystemNNNHooks())
+      return true;
+  }
+  if (Util::CheckFile(L"Data/Exi_UT2.sdat")) {
+    if (InsertDmmHooks())
+      return true;
+  }
   if (Util::CheckFile(L"EAGLS.dll")) { // jichi 3/24/2014: E.A.G.L.S
     //ConsoleOutput("vnreng: IGNORE EAGLS");
     InsertEaglsHook();
@@ -393,7 +509,7 @@ bool DetermineEngineByFile4()
     return true;
   }
   if (Util::CheckFile(L"*.tac")) {
-    InsertTanukiHook();
+    InsertTanukiHooks();
     return true;
   }
   if (Util::CheckFile(L"*.gxp")) {
@@ -410,8 +526,8 @@ bool DetermineEngineByFile4()
   }
   if (Util::CheckFile(L"*.ykc")) { // jichi 7/15/2014: YukaSystem1 is not supported, though
     //ConsoleOutput("vnreng: IGNORE YKC:Feng/HookSoft(SMEE)");
-    InsertYukaSystem2Hook();
-    return true;
+    if (InsertYukaSystemHooks())
+      return true;
   }
   if (Util::CheckFile(L"model\\*.hed")) { // jichi 9/8/2014: EXP
     InsertExpHook();
@@ -433,6 +549,10 @@ bool DetermineEngineByFile4()
   if (Util::CheckFile(L"PSetup.exe") || Util::CheckFile(L"PENCIL.*") || Util::SearchResourceString(L"2XT -")) {
     InsertPensilHook();
     return true;
+  }
+
+  if (Util::CheckFile(L"voice\\*.pck")) {
+      return /*InsertAnimHook() || InsertAnim2Hook() ||*/ InsertAnim3Hook();    
   }
 
   // jichi 11/22/2015: 凍京NECRO 体験版
@@ -557,17 +677,20 @@ bool DetermineEngineByProcessName()
 
 bool DetermineEngineOther()
 {
+  // jichi 12/26/2013: Add this after alicehook
+  if (Util::CheckFile(L"AliceStart.ini")) {
+    if (Util::CheckFile(L"DLL/Sys42VM.dll"))
+      if (InsertSystem42Hook())
+        return true;
+    if (InsertSystem43Hook())
+      return true;
+  }
   if (InsertAliceHook())
     return true;
   // jichi 1/19/2015: Disable inserting Lstr for System40
   // See: http://sakuradite.com/topic/618
   if (Util::CheckFile(L"System40.ini")) {
     ConsoleOutput("vnreng: IGNORE old System40.ini");
-    return true;
-  }
-  // jichi 12/26/2013: Add this after alicehook
-  if (Util::CheckFile(L"AliceStart.ini")) {
-    InsertSystem43Hook();
     return true;
   }
 
@@ -624,7 +747,7 @@ bool DetermineEngineOther()
 bool DetermineEngineAtLast()
 {
 	if (Util::CheckFile(L"*.g2")) {
-		InsertTanukiHook();
+		InsertTanukiHooks();
 		return true;
 	}
   if (Util::CheckFile(L"MovieTexture.dll") && (InsertPensilHook() || Insert2RMHook())) // MovieTexture.dll also exists in 2RM games such as 母子愛2体験版, which is checked first

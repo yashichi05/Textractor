@@ -363,7 +363,7 @@ void WideStringCharReplacer(wchar_t *str, size_t *size, const wchar_t *src, size
     curlen = len - (cur - str);
     if (curlen == 0)
       break;
-    ::memmove(cur, cur + srclen, 2 * curlen);
+    ::memmove(cur, cur + srclen -1, 2 * curlen);
   }
   *size = len * 2;
 }
@@ -584,16 +584,151 @@ bool FindKiriKiriHook(DWORD fun, DWORD size, DWORD pt, DWORD flag) // jichi 10/2
   return false;
 }
 
+bool KiriKiri3Filter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPWSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+  static std::wstring prevText;
+
+  if (!*len)
+    return false;
+  text[*len/sizeof(wchar_t)] = L'\0';  // clean text
+  if (!prevText.compare(text))
+    return false;
+  prevText = text;
+
+  if (cpp_wcsnstr(text, L"[", *len/sizeof(wchar_t))) {
+    WideStringCharReplacer(text, len, L"[r]", 3, L' ');
+    WideStringFilterBetween(text, len, L"[", 1, L"]\\", 2);
+    // ruby type 1
+    WideStringFilterBetween(text, len, L"[mruby r=", 9, L"\" text=\"", 8); // [mruby r="ゆきみ" text="由紀美"]
+    // ruby type 2
+    WideStringFilterBetween(text, len, L"[ruby text=", 11, L"]", 1); // [ruby text="せんがわ" align="e"][ch text="仙川"]
+    WideStringFilter(text, len, L"[ch text=\"", 10);                 // [ruby text="せんがわ" align="e"][ch text="仙川"]
+    // ruby type 1-2
+    WideStringFilter(text, len, L"\"]", 2);
+    // end ruby
+    WideStringFilter(text, len, L"[heart]", 7);
+  }
+  if (cpp_wcsnstr(text, L"[", *len/sizeof(wchar_t))) // detect garbage sentence. [ruby text=%r][ch text=%text][macropop]
+    return false;
+
+  return true;
+}
+
+bool InsertKiriKiri3Hook()
+{
+  //by Blu3train
+  /*
+  * Sample games:
+  * https://vndb.org/v16190
+  * https://vndb.org/v43048
+  * https://vndb.org/v46112
+  * https://vndb.org/v20491
+  * https://vndb.org/v28695
+  * https://vndb.org/v5549
+  * https://vndb.org/v28513
+  * https://vndb.org/v46499
+  */
+  const BYTE bytes[] = {
+    0x75, 0x09,                      // jne GAME.EXE+1D5B37
+    0x8B, 0x85, XX4,                 // mov eax,[ebp-00000254]
+    0xFF, 0x40, 0x78                 // inc [eax+78]
+  };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:KiriKiri3: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_ecx_off -4;
+  hp.index = 0;
+  hp.split = pusha_eax_off-4;
+  hp.split_index = 0;
+  hp.type = USING_UNICODE | USING_STRING | USING_SPLIT;
+  hp.filter_fun = KiriKiri3Filter;
+  ConsoleOutput("vnreng: INSERT KiriKiri3");
+  NewHook(hp, "KiriKiri3");
+  return true;
+}
+
+bool KiriKiri4Filter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPWSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+
+  if (text[0] == L'[' || text[0] == L'@' || (*len<=2 && text[0] == L' '))
+    return false;
+  
+  if (cpp_wcsnstr(text, L"[", *len/sizeof(wchar_t))) {
+    WideStringCharReplacer(text, len, L"[r]", 3, L' ');
+    WideStringFilterBetween(text, len, L"[", 1, L"]\\", 2);
+    // ruby type 1
+    WideStringFilterBetween(text, len, L"[mruby r=", 9, L"\" text=\"", 8); // [mruby r="ゆきみ" text="由紀美"]
+    // ruby type 2
+    WideStringFilterBetween(text, len, L"[ruby text=", 11, L"]", 1); // [ruby text="せんがわ" align="e"][ch text="仙川"]
+    WideStringFilter(text, len, L"[ch text=\"", 10);                 // [ruby text="せんがわ" align="e"][ch text="仙川"]
+    // ruby type 1-2
+    WideStringFilter(text, len, L"\"]", 2);
+    // end ruby
+    WideStringFilterBetween(text, len, L"[", 1, L"]", 1);
+  }
+
+  return true;
+}
+
+bool InsertKiriKiri4Hook()
+{
+  //by Blu3train
+  /*
+  * Sample games:
+  * https://vndb.org/r114393
+  * https://vndb.org/v2916
+  * https://vndb.org/r117083
+  * https://vndb.org/v3851
+  * https://vndb.org/v7804
+  * https://vndb.org/v11123
+  * https://vndb.org/v18650
+  */
+  const BYTE bytes[] = {
+    0xE8, XX4,                     // call Kansen1._GetExceptDLLinfo+67B      <-- hook here
+    0x8D, 0x45, 0xA4,              // lea eax,[ebp-5C]
+    0xFF, 0x45, 0x9C,              // inc [ebp-64]
+    0xE8, XX4                      // call Kansen1.exe+1D561C
+  };
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:KiriKiri4: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_edx_off -4;
+  hp.index = 0;
+  hp.type = NO_CONTEXT | USING_UNICODE | USING_STRING;
+  hp.filter_fun = KiriKiri4Filter;
+  ConsoleOutput("vnreng: INSERT KiriKiri4");
+  NewHook(hp, "KiriKiri4");
+  return true;
+}
+
 bool InsertKiriKiriHook() // 9/20/2014 jichi: change return type to bool
 {
   bool k1 = FindKiriKiriHook((DWORD)GetGlyphOutlineW,      processStopAddress - processStartAddress, processStartAddress, 0), // KiriKiri1
-       k2 = FindKiriKiriHook((DWORD)GetTextExtentPoint32W, processStopAddress - processStartAddress, processStartAddress, 1); // KiriKiri2
+       k2 = FindKiriKiriHook((DWORD)GetTextExtentPoint32W, processStopAddress - processStartAddress, processStartAddress, 1), // KiriKiri2
+       k3 = InsertKiriKiri3Hook(), // KiriKiri3
+       k4 = InsertKiriKiri4Hook(); // KiriKiri4
   //RegisterEngineType(ENGINE_KIRIKIRI);
   if (k1 && k2) {
     ConsoleOutput("vnreng:KiriKiri1: disable GDI hooks");
-    
   }
-  return k1 || k2;
+  return k1 || k2 || k3 || k4;
 }
 
 /** 10/20/2014 jichi: KAGParser
@@ -1355,6 +1490,36 @@ namespace { // unnamed
 //}
 //
 
+bool KiriKiriZHookModFilter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPWSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+
+  WideCharReplacer(text, len, L'\r', L' ');
+  WideCharReplacer(text, len, L'\n', L' ');
+
+  return true;
+}
+
+void NewKiriKiriZHookMod(DWORD addr)
+{
+  //by Blu3train
+  /*
+  * Sample games:
+  * https://vndb.org/v20196
+  */
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_ecx_off - 4;
+  hp.split = pusha_edi_off - 4;    // the same logic but diff value as NewKiriKiriZHook, use [edi] as split
+  hp.index = 0x14;        // the same as KiriKiri1
+  hp.length_offset = 1; // the same as KiriKiri1
+  hp.type = USING_UNICODE | DATA_INDIRECT | USING_SPLIT;
+  hp.filter_fun = KiriKiriZHookModFilter;
+  ConsoleOutput("vnreng: INSERT KiriKiriZ Mod");
+  NewHook(hp, "KiriKiriZ Mod");  
+}
+
 void NewKiriKiriZHook(DWORD addr)
 {
   HookParam hp = {};
@@ -1435,7 +1600,296 @@ bool InsertKiriKiriZHook2()
   }
 
   NewKiriKiriZHook(addr);
+  NewKiriKiriZHookMod(addr + 5); 	//by Blu3train
   ConsoleOutput("vnreng: KiriKiriZ2 inserted");
+  return true;
+}
+
+bool KiriKiriZ3Filter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPWSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+
+  WideCharFilter(text, len, L'\x000A');
+  if (cpp_wcsnstr(text, L"%", *len/sizeof(wchar_t))) {
+    WideStringFilterBetween(text, len, L"%", 1, L"%", 1);
+  }
+
+  return true;
+}
+
+bool InsertKiriKiriZHook3() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/r109253
+    */
+  const BYTE bytes[] = {
+    0x66, 0x83, 0x3F, 0x00,    // cmp word ptr [edi],00          << hook here
+    0x75, 0x06,                // jne Imouto_no_Seiiki.exe+195C1
+    0x33, 0xDB,                // xor ebx,ebx
+    0x89, 0x1E,                // mov [esi],ebx
+    0xEB, 0x1B                 // jmp Imouto_no_Seiiki.exe+195DC
+  };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:KiriKiriZ3: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_edi_off -4;
+  hp.split  = pusha_edx_off -4;
+  hp.type =  NO_CONTEXT | USING_UNICODE | USING_STRING | USING_SPLIT;
+  hp.filter_fun = KiriKiriZ3Filter;
+  ConsoleOutput("vnreng: INSERT KiriKiriZ3");
+  NewHook(hp, "KiriKiriZ3");
+
+  return true;
+}
+
+bool KiriKiriZ4Filter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPWSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+
+  if (text[0] == L' ' || text[0] == L':' || text[0] == L'@' || text[0] == L'[' || text[0] == L']')
+	return false;
+
+  if (cpp_wcsnstr(text, L"[", *len/sizeof(wchar_t))) {
+    WideStringCharReplacer(text, len, L"[r]", 3, L' ');
+    WideStringFilterBetween(text, len, L"[", 1, L"]", 1);
+  }
+
+  return true;
+}
+
+bool InsertKiriKiriZHook4() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/r111774
+    * https://vndb.org/v38021
+    */
+  const BYTE bytes[] = {
+    0xE8, 0xE8, 0xBA, 0xFE, 0xFF,    // call Shironagasu.exe+227B0       << hook here
+    0xC7, 0x45, 0xFC, XX4,           // mov [ebp-04],00000000
+    0xC7, 0x45, 0xF0, XX4,           // mov [ebp-10],00000001
+    0x8B, 0x45, 0x08                 // mov eax,[ebp+08]
+  };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:KiriKiriZ4: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_ebx_off -4;
+  hp.type =  NO_CONTEXT | USING_UNICODE | USING_STRING;
+  hp.filter_fun = KiriKiriZ4Filter;
+  ConsoleOutput("vnreng: INSERT KiriKiriZ4");
+  NewHook(hp, "KiriKiriZ4");
+
+  return true;
+}
+
+bool KiriKiriZ_msvcFilter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPWSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+  static std::wstring prevText;
+
+  if (!*len)
+    return false;
+  text[*len/sizeof(wchar_t)] = L'\0';  // clean text
+
+  if (!prevText.compare(text))
+    return false;
+  prevText = text;
+
+  WideStringCharReplacer(text, len, L"\\n", 2, L' ');
+  if (cpp_wcsnstr(text, L"%", *len/sizeof(wchar_t))) {
+    WideStringFilterBetween(text, len, L"%", 1, L";", 1);
+  }
+  return true;
+}
+
+bool InsertKiriKiriZHook_msvc()
+{
+  //by Blu3train
+  /*
+  * Sample games:
+  * https://vndb.org/r76735
+  * https://vndb.org/v22020
+  * https://vndb.org/v26052
+  * https://vndb.org/v17763
+  * https://vndb.org/v15538
+  * https://vndb.org/v18713
+  * https://vndb.org/v19385
+  * https://vndb.org/v18148
+  * https://vndb.org/v19841
+  * https://vndb.org/v24717
+  * https://vndb.org/v30458
+  * https://vndb.org/v33036
+  * https://vndb.org/v27448
+  * https://vndb.org/r67327
+  */
+  auto module = GetModuleHandleW(L"textrender.dll");
+  if (!module)
+    return false;
+
+  const BYTE pattern[] = {
+/*
+textrender.dll+BE39 - 8B 4C 24 2C           - mov ecx,[esp+2C]  << hook here
+textrender.dll+BE3D - 50                    - push eax
+textrender.dll+BE3E - 8B 44 24 2C           - mov eax,[esp+2C]
+textrender.dll+BE42 - 8B 10                 - mov edx,[eax]
+textrender.dll+BE44 - FF D2                 - call edx          << start pattern
+textrender.dll+BE46 - 88 44 24 18           - mov [esp+18],al
+textrender.dll+BE4A - 8B 44 24 10           - mov eax,[esp+10]
+textrender.dll+BE4E - 85 C0                 - test eax,eax
+textrender.dll+BE50 - 74 0B                 - je textrender.dll+BE5D
+textrender.dll+BE52 - 8D 4C 24 18           - lea ecx,[esp+18]
+textrender.dll+BE56 - 51                    - push ecx
+textrender.dll+BE57 - 50                    - push eax
+textrender.dll+BE58 - E8 33E5FFFF           - call textrender.dll+A390
+textrender.dll+BE5D - B0 01                 - mov al,01
+textrender.dll+BE5F - C3                    - ret 
+*/
+    0xFF, XX,
+    0x88, XX, XX, XX,
+    XX, XX, XX, XX,
+    XX, XX,
+    0x74, XX,
+    XX, XX, XX, XX,
+    XX,
+    XX,
+    0xE8, XX, XX, XX, XX,
+    0xB0, 0x01,
+    0xC3
+  };
+  enum { addr_offset = -0x0B };  // 8B 4C 24 2C   - mov ecx,[esp+2C]  << hook here
+
+  ULONG addr = MemDbg::findBytes(pattern, sizeof(pattern), (DWORD)module, Util::QueryModuleLimits(module).second);
+  if (!addr) {
+    ConsoleOutput("vnreng:KiriKiriZ_msvc: pattern not found");
+    return false;
+  }
+  HookParam hp = {};
+  hp.address = addr + addr_offset;
+  hp.offset = pusha_eax_off - 4;
+  hp.type = USING_UNICODE | USING_STRING;
+  hp.filter_fun = KiriKiriZ_msvcFilter;
+  ConsoleOutput("Textractor: INSERT KiriKiriZ_msvc");
+  NewHook(hp, "KiriKiriZ_msvc");
+  return true;
+}
+
+bool KiriKiriZ5Filter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPWSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+
+  if (cpp_wcsnstr(text, L"=", *len/sizeof(wchar_t)))
+    return false;
+
+  if (cpp_wcsnstr(text, L"[", *len/sizeof(wchar_t)))
+    WideStringFilterBetween(text, len, L"[", 1, L"]", 1);
+  WideStringCharReplacer(text, len, L"\\n", 2, L' ');
+  WideStringFilter(text, len, L"\\x", 2);
+
+  return true;
+}
+
+bool InsertKiriKiriZHook5() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/v16193
+    */
+  const BYTE bytes[] = {
+    0x66, 0x8B, 0x04, 0x43           // mov ax,[ebx+eax*2]       << hook here
+  };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:KiriKiriZ5: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_ebx_off -4;
+  hp.type =  NO_CONTEXT | USING_UNICODE | USING_STRING;
+  hp.text_fun = [](DWORD esp_base, HookParam*, BYTE, DWORD *data, DWORD *split, DWORD* len)
+  {
+    if (regof(eax, esp_base) == 1 )
+      *len = wcslen((wchar_t*)*data) * 2;
+  };
+  hp.filter_fun = KiriKiriZ5Filter;
+  ConsoleOutput("vnreng: INSERT KiriKiriZ5");
+  NewHook(hp, "KiriKiriZ5");
+
+  return true;
+}
+
+bool KiriKiriZ6Filter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPWSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+
+  WideCharReplacer(text, len, L'／', L' ');	// \x0FFF
+  if (cpp_wcsnstr(text, L"$r:", *len/sizeof(wchar_t))){
+    WideStringFilter(text, len, L"$r:", 3);
+    WideStringFilterBetween(text, len, L",", 1, L";", 1);
+  }
+
+  return true;
+}
+
+bool InsertKiriKiriZHook6() 
+{
+  //by Blu3train
+  /*
+   * Sample games:
+   * https://vndb.org/v48419
+   */
+  const BYTE bytes[] = {
+    0xCC,                            // int 3 
+    0x55,                            // push ebp       << hook here
+    0x8B, 0xEC,                      // mov ebp,esp
+    0x51,                            // push ecx
+    0x53,                            // push ebx
+    0x56,                            // push esi
+    0x89, 0x4D, 0xFC                 // mov [ebp-04],ecx
+  };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:KiriKiriZ6: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr + 1;
+  hp.offset = pusha_esi_off -4;
+  hp.split  = 19 * 4; //arg 19
+  hp.type =  USING_UNICODE | USING_STRING | USING_SPLIT;
+  hp.filter_fun = KiriKiriZ6Filter;
+  ConsoleOutput("vnreng: INSERT KiriKiriZ6");
+  NewHook(hp, "KiriKiriZ6");
+
   return true;
 }
 
@@ -1443,7 +1897,14 @@ bool InsertKiriKiriZHook2()
 
 // jichi 1/30/2015: Do KiriKiriZ2 first, which might insert to the same location as KiriKiri1.
 bool InsertKiriKiriZHook()
-{ return InsertKiriKiriZHook2() || InsertKiriKiriZHook1(); }
+{
+  bool ok = InsertKiriKiriZHook_msvc();
+  ok = InsertKiriKiriZHook3() || ok;
+  ok = InsertKiriKiriZHook4() || ok;
+  ok = InsertKiriKiriZHook5() || ok;
+  ok = InsertKiriKiriZHook6() || ok;
+  return InsertKiriKiriZHook2() || InsertKiriKiriZHook1() || ok;
+}
 
 /********************************************************************************************
 BGI hook:
@@ -2141,6 +2602,147 @@ bool InsertBGI3Hook()
   return true;
 }
 #endif // 0
+
+bool BGI4Filter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPWSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+
+  WideCharFilter(text, len, L'\x0001');
+  WideCharFilter(text, len, L'\x0002');
+  WideCharFilter(text, len, L'\x0003');
+  WideCharFilter(text, len, L'\x0004');
+  WideCharFilter(text, len, L'\x0005');
+  WideCharFilter(text, len, L'\x000A');
+  if (text[0] == L'\x3000') {
+    *len -= 2; 
+    ::memmove(text, text+1, *len);
+  }
+  WideCharReplacer(text, len, L'\x3000', L' ');	//IDSP
+
+  if (cpp_wcsnstr(text, L"<", *len/sizeof(wchar_t))) {
+    WideStringFilterBetween(text, len, L"<", 1, L">", 1);
+  }
+
+  return true;
+}
+
+bool InsertBGI4Hook()
+{
+    //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/v26664
+    * https://vndb.org/v44105
+    */
+    bool found = false;
+    const BYTE pattern[] = {
+        0x55,                           // 55               push ebp         << hook here
+        0x8b,0xec,                      // 8BEC             mov ebp,esp
+        0x53,                           // 53               push ebx
+        0x56,                           // 56               push esi
+        0x57,                           // 57               push edi
+        0x33, 0xFF,                     // 33 FF            xor edi,edi
+        0xE8, XX4,                      // E8 23FDFFFF      call saclet.exe+A0990
+        0x8B, 0xF0                      // 8B F0            mov esi,eax
+    };
+
+    for (auto addr : Util::SearchMemory(pattern, sizeof(pattern), PAGE_EXECUTE, processStartAddress, processStopAddress))
+    {
+        HookParam hp = {};
+        hp.address = addr;
+        hp.offset = pusha_eax_off - 4;
+        hp.split = pusha_esp_off - 4;
+        hp.type = USING_UNICODE | USING_STRING | USING_SPLIT | KNOWN_UNSTABLE;
+        hp.filter_fun = BGI4Filter;
+        ConsoleOutput("Textractor: INSERT BGI4");
+        NewHook(hp, "BGI4");
+        found = true;
+    }
+    if (!found) ConsoleOutput("Textractor:BGI4: pattern not found");
+    return found;
+}
+
+bool BGI56Filter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+
+  if (text[0] == '@') {
+    *len -= 1;
+    ::memmove(text, text + 1, *len);
+  }
+
+  return true;
+}
+
+bool InsertBGI5Hook() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/v473
+    */
+  const BYTE bytes[] = {
+    0x90,                      // nop 
+    0x81, 0xEC, XX4,           // sub esp,00000920         << hook here
+    0x8B, 0x84, 0x24, XX4,     // mov eax,[esp+00000944]
+    0x55,                      // push ebp
+    0x8D, 0x8C, 0x24, XX4      // lea ecx,[esp+000000F4]
+  };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr)
+    return false;
+
+  HookParam hp = {};
+  hp.address = addr + 1;
+  hp.offset = pusha_ecx_off -4;
+  hp.index = 0;
+  hp.padding = 1;
+  hp.type = USING_STRING;
+  hp.filter_fun = BGI56Filter;
+  ConsoleOutput("vnreng: INSERT BGI5");
+  NewHook(hp, "BGI5");
+  return true;
+}
+
+bool InsertBGI6Hook() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/r96578
+    */
+  const BYTE bytes[] = {
+    0x90,                                      // nop 
+    0x6A, 0xFF,                                // push -01            << hook here
+    0x68, XX4,                                 // push BGI.exe+87AF8
+    0x64, 0xA1, 0x00, 0x00, 0x00, 0x00,        // mov eax,fs:[00000000]
+    0x50,                                      // push eax
+    0x64, 0x89, 0x25, 0x00, 0x00, 0x00, 0x00,  // mov fs:[00000000],esp
+    0x81, 0xEC, XX4,                           // sub esp,000009B4
+    0x8B, 0x84, 0x24, 0xE4, 0x09, 0x00, 0x00   // mov eax,[esp+000009E4]
+  };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr)
+    return false;
+
+  HookParam hp = {};
+  hp.address = addr + 1;
+  hp.offset = pusha_ecx_off -4;
+  hp.index = 0;
+  hp.padding = 1;
+  hp.type = USING_STRING;
+  hp.filter_fun = BGI56Filter;
+  ConsoleOutput("vnreng: INSERT BGI6");
+  NewHook(hp, "BGI6");
+  return true;
+}
+
 } // unnamed
 
 // jichi 5/12/2014: BGI1 and BGI2 game can co-exist, such as 世界と世界の真ん中で
@@ -2149,7 +2751,7 @@ bool InsertBGI3Hook()
 // Insert BGI2 first.
 // Artikash 6/12/2019: In newer games neither exists, but WideCharToMultiByte works, so insert that if BGI2 fails.
 bool InsertBGIHook()
-{ return InsertBGI2Hook() ||  (PcHooks::hookOtherPcFunctions(), InsertBGI1Hook()); }
+{ return InsertBGI4Hook() || InsertBGI2Hook() || InsertBGI5Hook() || InsertBGI6Hook() ||  (PcHooks::hookOtherPcFunctions(), InsertBGI1Hook()); }
 
 /********************************************************************************************
 Reallive hook:
@@ -2239,8 +2841,63 @@ static bool InsertRealliveDynamicHook(LPVOID addr, DWORD frame, DWORD stack)
   }
   return true; // jichi 12/25/2013: return true
 }
+
+bool RlBabelFilter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+
+  if (text[0] == '\x01') {
+    StringFilterBetween(text, len, "\x01", 1, "\x02", 1); // remove names
+  }
+
+  CharReplacer(text, len, '\x08', '"');
+  CharReplacer(text, len, '\x09', '\'');
+  CharReplacer(text, len, '\x0A', '\'');
+  CharFilter(text, len, '\x1F'); // remove color
+  StringReplacer(text, len, "\x89\x85", 2, "\x81\x63", 2);  // "\x89\x85"-> shift-JIS"…"
+  StringReplacer(text, len, "\x89\x97", 2, "--", 2);
+
+  return true;
+}
+
+bool InsertRlBabelHook() {
+	//by Blu3train
+	/*
+	* Sample games:
+	* https://vndb.org/r78318
+	*/
+	const BYTE bytes[] = {
+		0xCC,                          // int 3 
+		0x55,                          // push ebp        <- hook here
+		0x8B, 0xEC,                    // mov ebp,esp
+		0x83, 0xEC, 0x20,              // sub esp,20
+		0xC7, 0x45, 0xFC, XX4          // mov [ebp-04],rlBabel.DLL+16804
+	};
+
+	HMODULE module = GetModuleHandleW(L"rlBabel.dll");
+	if (!module)
+		return false;
+	auto [minAddress, maxAddress] = Util::QueryModuleLimits(module);
+	ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), minAddress, maxAddress);
+	if (!addr)
+		return false;
+
+	HookParam hp = {};
+	hp.address = addr + 1;
+	hp.offset = pusha_eax_off -4;
+    hp.index = 0;
+	hp.type = USING_STRING;
+	hp.filter_fun = RlBabelFilter;
+	ConsoleOutput("vnreng: INSERT RealLive Babel");
+	NewHook(hp, "RealLive Babel");
+
+	return true;
+}
+
 void InsertRealliveHook()
 {
+  InsertRlBabelHook();
   //ConsoleOutput("Probably Reallive. Wait for text.");
   ConsoleOutput("vnreng: TRIGGER Reallive");
   trigger_fun = InsertRealliveDynamicHook;
@@ -3863,6 +4520,39 @@ bool InsertSiglus1Hook()
   return false;
 }
 
+bool InsertSiglus5Hook()
+{
+  //by Blu3train
+  /*
+   * Sample games:
+   * https://vndb.org/v10926
+   */
+  const BYTE bytes[] = {
+    0x75, 0x10,             // SiglusEngine.exe+148A9 - 75 10          jne SiglusEngine.exe+148BB
+    0x83, 0x7A, 0x14, 0x08, // SiglusEngine.exe+148AB - 83 7A 14 08    cmp dword ptr [edx+14],08
+    0x72, 0x02,             // SiglusEngine.exe+148AF - 72 02          jb SiglusEngine.exe+148B3
+    0x8B, 0x12,             // SiglusEngine.exe+148B1 - 8B 12          mov edx,[edx]
+    0x66, 0x89, 0x04, 0x72  // SiglusEngine.exe+148B3 - 66 89 04 72    mov [edx+esi*2],ax << hook here
+  };
+  enum { addr_offset = sizeof(bytes) - 4 };
+  ULONG range = max(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:Siglus5: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr + addr_offset;
+  hp.offset = pusha_eax_off - 4;
+  hp.type = USING_UNICODE;
+  hp.length_offset = 1;
+  ConsoleOutput("vnreng: INSERT Siglus5");
+  NewHook(hp, "SiglusEngine5");
+  
+  return true;
+}
+
 } // unnamed namespace
 
 // jichi 8/17/2013: Insert old first. As the pattern could also be found in the old engine.
@@ -3873,6 +4563,7 @@ bool InsertSiglusHook()
   bool ok = InsertSiglus2Hook();
   ok = InsertSiglus3Hook() || ok;
   ok = InsertSiglus4Hook() || ok;
+  ok = InsertSiglus5Hook() || ok;
   return ok;
 }
 
@@ -4141,6 +4832,49 @@ bool InsertMajiroHook()
   }
   //RegisterEngineType(ENGINE_MAJIRO);
   return true;
+}
+
+bool InsertMajiro3Hook() 
+{
+  //by Blu3train
+  /*
+  * Sample games:
+  * Narcissu 10th Anniversary Anthology Project
+  * https://vndb.org/v10
+  * https://vndb.org/v70
+  * https://vndb.org/v18738
+  * https://vndb.org/v18739
+  * https://vndb.org/v18736
+  */
+  const BYTE bytes[] = {
+    0xC1, 0xE9, 0x02,        // shr ecx,02     << hook here
+    0xF3, 0xA5,              // repe movsd 
+    0x8B, 0xCA,              // mov ecx,edx
+    0x8D, 0x95, XX4          // lea edx,[ebp-00000404]
+  };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:Majiro3: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_esi_off - 4;
+  hp.index = 0;
+  hp.type = USING_STRING;
+  ConsoleOutput("vnreng: INSERT Majiro3");
+  ConsoleOutput("vnreng:Majiro3: To separate the text between lines flag the \"Flush delay string spacing\" option");
+  NewHook(hp, "Majiro3");
+  return true;
+}
+
+bool InsertMajiroHooks()
+{ 
+  bool ok = InsertMajiroHook();
+  return InsertMajiro3Hook() || ok;
 }
 
 /********************************************************************************************
@@ -5529,14 +6263,143 @@ static bool InsertSystem43NewHook(ULONG startAddress, ULONG stopAddress, LPCSTR 
   return true;
 }
 
+bool System43aFilter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+
+  CharReplacer(text, len, '\n', ' ');
+
+  if (cpp_strnstr(text, "${", *len)) {
+    StringFilterBetween(text, len, "${", 3, "}", 1);
+  }
+
+  return true;
+}
+
+bool InsertSystem43aHook() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/r84067
+    */
+  const BYTE bytes[] = {
+    0xC7, 0x46, 0x10, XX4,         // mov [esi+10],00000000
+    0x72, 0x02,                    // jb dohnadohna.exe+1BFA7E
+    0x8B, 0x36,                    // mov esi,[esi]
+    0x8B, 0x4C, 0x24, 0x14,        // mov ecx,[esp+14]
+    0x57,                          // push edi
+    0xC6, 0x06, 0x00               // mov byte ptr [esi],00   << hook here
+  };
+  enum { addr_offset = sizeof(bytes) - 3 };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:System43a: pattern not found");
+    return false;
+  }
+  HookParam hp = {};
+  hp.address = addr + addr_offset;
+  hp.offset = pusha_edx_off - 4;
+  hp.split = pusha_esp_off - 4;
+  hp.type = NO_CONTEXT | USING_STRING | USING_SPLIT;
+  hp.filter_fun = System43aFilter;
+  ConsoleOutput("vnreng: INSERT System43a");
+  NewHook(hp, "System43a");
+  return true;
+}
+
+bool InsertSystem43bHook() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/v10732
+    */
+  const BYTE bytes[] = {
+    0x8B, 0xCE,                    // mov ecx,esi            << hook here
+    0xE8, XX4,                     // call Oyakorankan.exe+13D890
+    0x8B, 0x43, 0x04,              // mov eax,[ebx+04]
+    0x8D, 0x4C, 0x24, 0x10,        // lea ecx,[esp+10]
+    0x3B, 0xC8,                    // cmp ecx,eax
+    0x73, 0x64                     // jae Oyakorankan.exe+1403B2
+  };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:System43b: pattern not found");
+    return false;
+  }
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_edx_off - 4;
+  hp.split = 4 * 12; //arg12
+  hp.type = USING_STRING | USING_SPLIT;
+  ConsoleOutput("vnreng: INSERT System43b");
+  NewHook(hp, "System43b");
+  return true;
+}
+
 bool InsertSystem43Hook()
 {
+  if (InsertSystem43aHook() || InsertSystem43bHook())
+    return true;
   //bool patched = Util::CheckFile(L"AliceRunPatch.dll");
   bool patched = ::GetModuleHandleA("AliceRunPatch.dll");
   // Insert new hook first
   bool ok = InsertSystem43OldHook(processStartAddress, processStopAddress, patched ? "AliceRunPatch43" : "System43");
   ok = InsertSystem43NewHook(processStartAddress, processStopAddress, "System43+") || ok;
   return ok;
+}
+
+bool System42Filter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+
+  if (*len == 1)
+	 return false;
+  if (all_ascii(text, *len)) {
+    CharReplacer(text, len, '`', ' ');
+    CharReplacer(text, len, '\x7D', '-');
+  }
+
+  return true;
+}
+
+bool InsertSystem42Hook() {
+	//by Blu3train
+	/*
+	* Sample games:
+	* https://vndb.org/v1427
+	*/
+	const BYTE bytes[] = {
+		0x8B, 0x46, 0x04,        // mov eax,[esi+04]
+		0x57,                    // push edi
+		0x52,                    // push edx
+		0x50,                    // push eax
+		0xE8, XX4                // call Sys42VM.DLL+4B5B0
+	};
+
+	HMODULE module = GetModuleHandleW(L"Sys42VM.dll");
+	auto [minAddress, maxAddress] = Util::QueryModuleLimits(module);
+	ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), minAddress, maxAddress);
+	if (!addr)
+		return false;
+
+	HookParam hp = {};
+	hp.address = addr;
+	hp.offset = pusha_edx_off -4;
+    hp.split = pusha_esp_off -4;
+	hp.type = NO_CONTEXT | USING_STRING | USING_SPLIT;
+	hp.filter_fun = System42Filter;
+	ConsoleOutput("vnreng: INSERT System42");
+	NewHook(hp, "System42");
+
+	return true;
 }
 
 /********************************************************************************************
@@ -5583,6 +6446,311 @@ bool InsertAtelierHook()
   return false;
   //ConsoleOutput("Unknown Atelier KAGUYA engine.");
 }
+
+bool InsertAtelierKaguya2Hook() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/v22713
+    * https://vndb.org/v31685
+    * https://vndb.org/v37081
+    */
+  const BYTE bytes[] = {
+    0x51,                      // push ecx        << hook here
+    0x50,                      // push eax
+    0xE8, XX4,                 // call Start.exe+114307
+    0x83, 0xC4, 0x08,          // add esp,08
+    0x85, 0xC0,                // test eax,eax
+    0x78, 0xA1                 // js Start.exe+48947
+  };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:Atelier KAGUYA2: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_eax_off -4;
+  hp.index = 0;
+  hp.type = USING_STRING;
+  hp.filter_fun = NewLineCharToSpaceFilter;
+  ConsoleOutput("vnreng: INSERT Atelier KAGUYA2");
+  NewHook(hp, "Atelier KAGUYA2");
+  return true;
+}
+
+bool InsertAtelierKaguya3Hook() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/v10082
+    */
+  const BYTE bytes[] = {
+    0x55,                          // push ebp       << hook here
+    0x8B, 0xEC,                    // mov ebp,esp
+    0x6A, 0xFF,                    // push -01
+    0x68, 0x80, 0xB9, 0x4D, 0x00,  // push Start.exe+DB980
+    0x64, 0xA1, XX4,               // mov eax,fs:[00000000]
+    0x50,                          // push eax
+    0x51,                          // push ecx
+    0x81, 0xEC, 0xAC, 0x00, 0x00, 0x00   // sub esp,000000AC
+  };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:Atelier KAGUYA3: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_eax_off -4;
+  hp.index = 0;
+  hp.type = USING_STRING;
+  hp.filter_fun = NewLineCharToSpaceFilter;
+  ConsoleOutput("vnreng: INSERT Atelier KAGUYA3");
+  NewHook(hp, "Atelier KAGUYA3");
+  return true;
+}
+
+bool InsertAtelierKaguya4Hook() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/v14705
+    */
+  const BYTE bytes[] = {
+    0xE8, 0x90, 0xA8, 0xFF, 0xFF,  // call Start.exe+18380
+    0x89, 0x45, 0xF8,              // mov [ebp-08],eax
+    0x8B, 0x4D, 0x10,              // mov ecx,[ebp+10]
+    0x51,                          // push ecx
+    0x8B, 0x55, 0x0C,              // mov edx,[ebp+0C]
+    0x52,                          // push edx
+    0x8B, 0x45, 0x08,              // mov eax,[ebp+08]
+    0x50                           // push eax       << hook here
+  };
+  enum { addr_offset = sizeof(bytes) - 1 };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:Atelier KAGUYA4: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr + addr_offset;
+  hp.offset = pusha_eax_off -4;
+  hp.index = 0;
+  hp.type = USING_STRING;
+  hp.filter_fun = NewLineCharToSpaceFilter;
+  ConsoleOutput("vnreng: INSERT Atelier KAGUYA4");
+  NewHook(hp, "Atelier KAGUYA4");
+  return true;
+}
+
+bool InsertAtelierKaguya5Hook() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/v11224
+    */
+  const BYTE bytes[] = {
+    0xC2, 0x04, 0x00,                    // ret 0004
+    0x55,                                // push ebp       << hook here
+    0x8B, 0xEC,                          // mov ebp,esp
+    0x6A, 0xFF,                          // push -01
+    0x68, XX4,                           // push Start.exe+DA680
+    0x64, 0xA1, 0x00, 0x00, 0x00, 0x00,  // mov eax,fs:[00000000]
+    0x50,                                // push eax
+    0x51,                                // push ecx
+  };
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:Atelier KAGUYA5: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr + 3;
+  hp.offset = pusha_eax_off -4;
+  hp.index = 0;
+  hp.type = USING_STRING;
+  hp.filter_fun = NewLineCharToSpaceFilter;
+  ConsoleOutput("vnreng: INSERT Atelier KAGUYA5");
+  NewHook(hp, "Atelier KAGUYA5");
+  return true;
+}
+
+bool InsertAtelierHooks()
+{return  InsertAtelierHook() || InsertAtelierKaguya2Hook() || InsertAtelierKaguya3Hook() || InsertAtelierKaguya4Hook() || InsertAtelierKaguya5Hook();}
+
+
+bool InsertAtelierGSHook1() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/v7655
+    */
+  const BYTE bytes[] = {
+    0x53,                       // push ebx        << hook here
+    0xFF, 0x15, XX4,            // call dword ptr [GAME_SYS.EXE+E5074]
+    0x6A, 0x02,                 // push 02
+    0x6A, 0x02,                 // push 02
+    0x8D, 0xAE, XX4             // lea ebp,[esi+00000228]
+  };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:Atelier KAGUYA GAME_SYS1: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_ebp_off -4;
+  hp.index = 0;
+  hp.split = pusha_esp_off - 4;
+  hp.type = NO_CONTEXT | USING_STRING | USING_SPLIT;
+  ConsoleOutput("vnreng: INSERT Atelier KAGUYA GAME_SYS1");
+  NewHook(hp, "Atelier KAGUYA GS1");
+  return true;
+}
+
+bool InsertAtelierGSHook2() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/v403
+    * https://vndb.org/v1895
+    */
+  const BYTE bytes[] = {
+    0xC7, 0x44, 0x24, XX, XX4,     // mov [esp+34],0000000F        << hook here
+    0x89, 0x5C, 0x24, XX,          // mov [esp+30],ebx
+    0x88, 0x5C, 0x24, XX,          // mov [esp+20],bl
+    0x8D, 0x48, 0x01,              // lea ecx,[eax+01]
+    0x8A, 0x10                     // mov dl,[eax]
+//    0x40,                          // inc eax
+//    0x3A, 0xD3,                    // cmp dl,bl
+//    0x75, 0xF9                     // jne GAME_SYS.EXE+F0B5
+  };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:Atelier KAGUYA GAME_SYS2: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_eax_off -4;
+  hp.index = 0;
+  hp.type = NO_CONTEXT | USING_STRING;
+  ConsoleOutput("vnreng: INSERT Atelier KAGUYA GAME_SYS2");
+  NewHook(hp, "Atelier KAGUYA GS2");
+  return true;
+}
+
+bool AtelierGS3Filter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+  static std::string prevText;
+
+  if (!*len)
+    return false;
+  text[*len] = '\0';  // clean text
+
+  if (!prevText.compare(text))
+    return false;
+  prevText = text;
+  
+  return true;
+}
+
+bool InsertAtelierGSHook3() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/v25951
+    */
+  const BYTE bytes[] = {
+    0x0F, 0xBE, 0x04, 0x18,                   // movsx eax,byte ptr [eax+ebx]      << hook here
+    0x50,                                     // push eax
+    0xE8, XX4,                                // call GAME_SYS.EXE+1886BA
+    0x83, 0xC4, 0x04,                         // add esp,04
+    0xC7, 0x45, 0xE8, 0x00, 0x00, 0x00, 0x00  // mov [ebp-18],00000000
+  };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:Atelier KAGUYA GAME_SYS3: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_eax_off -4;
+  hp.index = 0;
+  hp.filter_fun = AtelierGS3Filter;
+  hp.type = NO_CONTEXT | USING_STRING;
+  ConsoleOutput("vnreng: INSERT Atelier KAGUYA GAME_SYS3");
+  NewHook(hp, "Atelier KAGUYA GS3");
+  return true;
+}
+
+bool InsertAtelierGSHooks()
+{return  InsertAtelierGSHook1() || InsertAtelierGSHook2() || InsertAtelierGSHook3();}
+
+bool InsertAtelierADV10Hook() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/v2890
+    */
+  const BYTE bytes[] = {
+    0x50,                       // push eax     << hook here
+    0xFF, 0x15, XX4,            // call dword ptr [ADV10.EXE+58268]
+    0x3B, 0x86, XX4,            // cmp eax,[esi+00008880]
+    0x7F, 0x17,                 // jg ADV10.EXE+1671C
+    0x8B, 0x86, XX4             // mov eax,[esi+00008884]
+  };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:Atelier KAGUYA ADV10: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_eax_off -4;
+  hp.index = 0;
+  hp.filter_fun = AtelierGS3Filter;
+  hp.type = NO_CONTEXT | USING_STRING;
+  ConsoleOutput("vnreng: INSERT Atelier KAGUYA ADV10");
+  ConsoleOutput("vnreng: doesn't work with instant text speed");
+  NewHook(hp, "Atelier KAGUYA ADV10");
+  return true;
+}
+
 /********************************************************************************************
 CIRCUS hook:
   Game folder contains advdata folder. Used by CIRCUS games.
@@ -5671,6 +6839,89 @@ bool InsertCircusHook2() // jichi 10/2/2013: Change return type to bool
   //ConsoleOutput("Unknown CIRCUS engine.");
   ConsoleOutput("vnreng:CIRCUS: failed");
   return false;
+}
+
+bool InsertCircusHook3()
+{
+  //mod by Blu3train
+  /*
+  * Sample games:
+  * https://vndb.org/v20218
+  */
+  const BYTE bytes[] = {
+    0xCC,                       // int 3 
+    0x81, 0xEC, XX4,            // sub esp,000004E0        << hook here
+    0xA1, XX4,                  // mov eax,[DSIF.EXE+AD288]
+    0x33, 0xC4,                 // xor eax,esp
+    0x89, 0x84, 0x24, XX4,      // mov [esp+000004DC],eax
+    0x8B, 0x84, 0x24, XX4,      // mov eax,[esp+000004E4]
+    0x53,                       // push ebx
+    0x55,                       // push ebp
+    0x56,                       // push esi
+    0x8B, 0xB4, 0x24, XX4       // mov esi,[esp+000004F4]
+  };
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:Circus3: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr + 1;
+  hp.offset = pusha_esi_off - 4;
+  hp.split = pusha_ecx_off - 4;
+  hp.type = USING_STRING | USING_SPLIT;
+  ConsoleOutput("vnreng: INSERT Circus3");
+  NewHook(hp, "Circus3");
+
+  return true;
+}
+
+bool CircusFilter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+
+  //ConsoleOutput("debug:Circus: -%.*s-", *len, text);
+  if (*len <= 1 || cpp_strnstr(text, "\\", *len) || (text[0] == '&' && text[1] == 'n'))
+    return false;
+
+  CharReplacer(text, len, '\n', ' ');
+
+  return true;
+}
+
+bool InsertCircusHook4()
+{
+  //mod by Blu3train
+  /*
+  * Sample games:
+  * https://vndb.org/r46909
+  */
+  const BYTE bytes[] = {
+    0x83, 0xF8, 0xFF,           // cmp eax,-01        << hook here
+    0x0F, 0x84, XX4,            // je DST.exe+1BCF0
+    0x8B, 0x0D, XX4             // mov ecx,[DST.exe+A41F0]
+  };
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:Circus4: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_edx_off - 4;
+  hp.split = 4 * 4; //arg4
+  hp.padding = 0x40;
+  hp.type = USING_STRING | USING_SPLIT;
+  hp.filter_fun = CircusFilter;
+  ConsoleOutput("vnreng: INSERT Circus4");
+  NewHook(hp, "Circus4");
+
+  return true;
 }
 
 /********************************************************************************************
@@ -5803,7 +7054,7 @@ bool InsertShinaHook()
 	  trigger_fun = [](LPVOID funcAddr, DWORD, DWORD stack)
 	  {
 		  bool ret = false;
-		  if (funcAddr != GetGlyphOutlineA) return false;
+		  if (funcAddr != GetGlyphOutlineA && funcAddr != GetTextExtentPoint32A) return false;
 		  for (int i = 0; i < 100; ++i)
 		  {
 			  // Address of text is somewhere on stack in call to func. Search for it.
@@ -5817,7 +7068,7 @@ bool InsertShinaHook()
 					  hp.type = DIRECT_READ;
 					  hp.address = addr;
 					  ConsoleOutput("Textractor: triggered: adding dynamic reader");
-					  NewHook(hp, "READ");
+					  NewHook(hp, "ShinaRio READ");
 					  ret = true;
 				  }
 			  };
@@ -5890,6 +7141,26 @@ bool InsertShinaHook()
   return false;
 }
 
+bool Waffle3Filter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+  static std::string prevText;
+
+  if (LPSTR bs=cpp_strnstr(text, "\\", *len))
+	if (bs > text && !IsSJIS(text)) // garbage text
+      return false;
+
+  if (prevText.find(text, 0, *len) != std::string::npos) // Check if the string is present in the previous one
+    return false;
+  prevText.assign(text, *len);
+
+  StringCharReplacer(text, len, "\r\n\x81\x40", 4, ' ');
+  StringCharReplacer(text, len, "\r\n", 2, ' ');
+  StringCharReplacer(text, len, "\x81\x40", 2, ' ');
+
+  return true;
+}
 bool InsertWaffleDynamicHook(LPVOID addr, DWORD frame, DWORD stack)
 {
 	ConsoleOutput("WaffleDynamic:triggered");
@@ -6020,6 +7291,30 @@ bool InsertWaffleHook()
       hp.type = DATA_INDIRECT;
       ConsoleOutput("Textractor: INSERT WAFFLE2");
       NewHook(hp, "WAFFLE2");
+      found = true;
+  }
+  //by Blu3train
+/** new waffle3
+*   test on https://vndb.org/v31003
+*/
+  const BYTE bytes2[] = {
+      0xCC,                     // int 3 
+      0x55,                     // push ebp     <- hook here
+      0x8B, 0xEC,               // mov ebp,esp
+      0x8B, 0x55, 0x0C,         // mov edx,[ebp+0C]
+      0x53                      // push ebx
+  };
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  if (DWORD addr = MemDbg::findBytes(bytes2, sizeof(bytes2), processStartAddress, processStartAddress + range))
+  {
+      HookParam hp = {};
+      hp.address = addr + 1;
+      hp.offset = pusha_eax_off - 4;
+      hp.index = 0x00;
+      hp.filter_fun = Waffle3Filter;
+      hp.type = USING_STRING;
+      ConsoleOutput("Textractor: INSERT WAFFLE3");
+      NewHook(hp, "WAFFLE3");
       found = true;
   }
   //ConsoleOutput("Probably Waffle. Wait for text.");
@@ -6352,8 +7647,269 @@ static bool InsertYuris2Hook()
   return true;
 }
 
+static bool Yuris3Filter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  static wchar_t prev_text;
+  wchar_t* pText = reinterpret_cast<wchar_t*>(data);
+
+  if (prev_text == *pText)
+  {
+    prev_text = '\0';
+    return false;
+  }
+  prev_text = *pText;
+  return true;
+}
+
+static bool InsertYuris3Hook()
+{
+  //by Blu3train
+  HookParam hp = {};
+  wcsncpy_s(hp.module, L"kernel32.dll", MAX_MODULE_SIZE - 1);
+  strncpy_s(hp.function, "MultiByteToWideChar", MAX_MODULE_SIZE - 1);
+  hp.address = 6;
+  hp.offset = 0xC; //arg3
+  hp.index = 0;
+  hp.split = 0x1C;
+  hp.split_index = 0;
+  hp.filter_fun = Yuris3Filter;
+  hp.type = USING_STRING | USING_SPLIT | MODULE_OFFSET | FUNCTION_OFFSET;
+  hp.length_offset = 0x10/(short)sizeof(void*); // arg4/arg_sz
+  ConsoleOutput("vnreng: INSERT YU-RIS 3");
+  NewHook(hp, "YU-RIS3");
+  return true;
+}
+
+bool InsertYuris4Hook()
+{
+  //by Blu3train
+  /*
+  * Sample games:
+  * https://vndb.org/v6540
+  */
+  bool found = false;
+  const BYTE pattern[] = {
+        0x52,                               // 52               push edx
+        0x68, 0x00, 0x42, 0x5C, 0x00,       // 68 00425C00      push euphoria.exe+1C4200
+        0xFF, 0x15, 0x90, 0x44, 0x7E, 0x00, // FF 15 90447E00   call dword ptr [euphoria.exe+3E4490]
+        0x83, 0xC4, 0x0C,                   // 83 C4 0C         add esp,0C
+        0xEB, 0x5F,                         // EB 5F            jmp euphoria.exe+4F4C5
+        0xFF, 0x35, 0xA4, 0x19, 0x66, 0x00, // FF 35 A4196600   push [euphoria.exe+2619A4]
+        0x52                                // 52               push edx
+  };
+  enum { addr_offset = 12 }; // distance to the beginning of the function, which is 0x83, 0xC4, 0x0C (add esp,0C)
+
+  for (auto addr : Util::SearchMemory(pattern, sizeof(pattern), PAGE_EXECUTE, processStartAddress, processStopAddress))
+  {
+    HookParam hp = {};
+    hp.address = addr+addr_offset;
+    hp.offset = pusha_edx_off - 4;
+    hp.type = USING_STRING ;
+    ConsoleOutput("Textractor: INSERT YU-RIS 4");
+    NewHook(hp, "YU-RIS4");
+    found = true;
+  }
+  if (!found) ConsoleOutput("Textractor:YU-RIS 4: pattern not found");
+  return found;
+}
+
+bool InsertYuris5Hook()
+{
+  //by Blu3train
+  /*
+  * Sample games:
+  * https://vndb.org/v4037
+  */
+  const BYTE bytes[] = {
+    0x33, 0xD2,          // xor edx,edx
+    0x88, 0x14, 0x0F,    // mov [edi+ecx],dl
+    0xA1, XX4,           // mov eax,[exe+2DE630]
+    0x8B, 0x78, 0x3C,    // mov edi,[eax+3C]
+    0x8B, 0x58, 0x5C,    // mov ebx,[eax+5C]
+    0x88, 0x14, 0x3B     // mov [ebx+edi],dl
+  };
+
+  enum { addr_offset = 0 }; // distance to the beginning of the function, which is 0x55 (push ebp)
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr)
+    return false;
+
+  HookParam hp = {};
+  hp.address = addr + addr_offset;
+  hp.offset = pusha_ecx_off - 4;
+  hp.type = USING_STRING | NO_CONTEXT;
+
+  ConsoleOutput("Textractor: INSERT YU-RIS 5");
+  NewHook(hp, "YU-RIS5");
+
+  return true;
+}
+
+static bool Yuris6Filter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+  static std::string prevText;
+
+  if (prevText.length()==*len && prevText.find(text, 0, *len) != std::string::npos) // Check if the string is present in the previous one
+    return false;
+  prevText.assign(text, *len);
+
+  // ruby ＜手水舎／ちょうずや＞
+  if (cpp_strnstr(text, "\x81\x83", *len)) {		// \x81\x83 -> '＜'
+    StringFilterBetween(text, len, "\x81\x5E", 2, "\x81\x84", 2); // \x81\x5E -> '／' , \x81\x84 -> '＞'
+    StringFilter(text, len, "\x81\x83", 2);			// \x81\x83 -> '＜'
+  }
+  // ruby ≪美桜／姉さん≫
+  else if (cpp_strnstr(text, "\x81\xE1", *len)) {	// \x81\xE1 -> '≪'
+    StringFilterBetween(text, len, "\x81\x5E", 2, "\x81\xE2", 2); // \x81\x5E -> '／' , \x81\xE2 -> '≫'
+    StringFilter(text, len, "\x81\xE1", 2);			// \x81\xE1 -> '≪'
+  }
+
+  CharReplacer(text, len, '=', '-');
+  StringCharReplacer(text, len, "\xEF\xF0", 2, ' ');
+  StringFilter(text, len, "\xEF\xF2", 2);
+  StringFilter(text, len, "\xEF\xF5", 2);
+  StringFilter(text, len, "\x81\x98", 2);
+
+  return true;
+}
+
+bool InsertYuris6Hook()
+{
+  //by Blu3train
+  /*
+  * Sample games:
+  * https://vndb.org/v40058
+  * https://vndb.org/v42883
+  * https://vndb.org/v44092
+  * https://vndb.org/v21171
+  * https://vndb.org/r46910
+  */
+  const BYTE bytes[] = {
+    0xE9, XX4,           // jmp oshitona01.exe+1B629
+    0xBF, XX4,           // mov edi,oshitona01.exe+24EEA0
+    0x8A, 0x17,          // mov dl,[edi]
+    0x47,                // inc edi
+    0x88, 0x16,          // mov [esi],dl
+    0x46,                // inc esi
+    0x84, 0xD2           // test dl,dl
+  };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr)
+    return false;
+
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_eax_off - 4;
+  hp.index = 0x38;
+  hp.filter_fun = Yuris6Filter;
+  hp.type = USING_STRING | NO_CONTEXT | DATA_INDIRECT;
+
+  ConsoleOutput("Textractor: INSERT YU-RIS 6");
+  NewHook(hp, "YU-RIS6");
+
+  return true;
+}
+
+bool InsertYuris7Hook() 
+{
+  //by Blu3train
+  /*
+  * Sample games:
+  * https://vndb.org/v45381
+  * https://vndb.org/v47458
+  * https://vndb.org/v21144
+  * https://vndb.org/v18681
+  */
+  const BYTE bytes[] = {
+    0x03, 0xC1,                   // add eax,ecx
+    0x99,                         // cdq 
+    0xE9, XX4                     // jmp nekonin_spin.exe+55753     << hook here
+  };
+  enum { addr_offset = sizeof(bytes) - 5 };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr)
+    return false;
+
+  HookParam hp = {};
+  hp.address = addr + addr_offset;
+  hp.offset = pusha_eax_off -4;
+  hp.index = 0;
+  hp.length_offset = 1; // only 1 character
+  hp.text_fun = [](DWORD esp_base, HookParam*, BYTE, DWORD*, DWORD*, DWORD* len)
+  {
+	*len = (retof(esp_base) == 0) ? 2 : 0;
+  };
+  hp.type = BIG_ENDIAN;
+  ConsoleOutput("vnreng: INSERT YU-RIS7");
+  NewHook(hp, "YU-RIS7");
+  return true;
+}
+
+bool InsertYuris8Hook() 
+{
+  //by Blu3train
+  /*
+  * Sample games:
+  * https://vndb.org/v47458
+  * https://vndb.org/v45381
+  */
+  const BYTE bytes[] = {
+    0x57,                         // push edi     << hook here
+    0x56,                         // push esi
+    0x55,                         // push ebp
+    0x53,                         // push ebx
+    0x83, 0xEC, 0x10,             // sub esp,10
+    0x8B, 0x5C, 0x24, 0x24,       // mov ebx,[esp+24]
+    0x8B, 0x15, XX4,              // mov edx,[hajiron.exe+47243C]
+    0x8B, 0x0C, 0x9A,             // mov ecx,[edx+ebx*4]
+    0xC6, 0x41, 0x01, 0x03,       // mov byte ptr [ecx+01],03
+    0x8B, 0xC3,                   // mov eax,ebx
+    0xE8,XX4                      // call hajiron.exe+54EA4
+  };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr)
+    return false;
+
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_edx_off -4;
+  hp.index = 0;
+  hp.text_fun = [](DWORD esp_base, HookParam*, BYTE, DWORD*, DWORD*, DWORD* len)
+  {
+	DWORD textLen = regof(eax,esp_base);
+	if ( textLen > 2)
+	  return;
+	*len = (regof(edi,esp_base) >= 0xFA && regof(edi,esp_base) <= 0xFE || regof(edi,esp_base) >= 0x1A0 && regof(edi,esp_base) <= 0x1C2) ? textLen : 0;
+  };
+  hp.type = USING_STRING;
+  ConsoleOutput("vnreng: INSERT YU-RIS8");
+  NewHook(hp, "YU-RIS8");
+  return true;
+}
+
+//bool InsertYurisHook()
+//{ return InsertYuris1Hook() || InsertYuris2Hook() || InsertYuris3Hook(); }
 bool InsertYurisHook()
-{ return InsertYuris1Hook() || InsertYuris2Hook(); }
+{ 
+  bool ok = InsertYuris1Hook();
+  ok = InsertYuris2Hook() || ok;
+  ok = InsertYuris3Hook() || ok;
+  ok = InsertYuris4Hook() || ok;
+  ok = InsertYuris5Hook() || ok;
+  ok = InsertYuris6Hook() || ok;
+  ok = InsertYuris7Hook() || ok;
+  ok = InsertYuris8Hook() || ok;
+  return ok;
+}
 
 bool InsertCotophaHook1()
 {
@@ -6392,10 +7948,29 @@ bool InsertCotophaHook2()
 	}
 	return false;
 }
+bool InsertCotophaHook3() {
+    const BYTE bytes[] = { 0x8B,0x75,0xB8,0x8B,0xCE,0x50,0xC6,0x45,0xFC,0x01,0xE8 };
+    ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+    ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+    if (!addr) {
+        ConsoleOutput("vnreng:Cotopha3: Cotopha3 not found");
+        return false;
+    }
 
+    HookParam myhp = {};
+    myhp.address = addr;
+
+    myhp.type = USING_UNICODE | USING_STRING | NO_CONTEXT;
+    myhp.offset = pusha_eax_off - 4;
+
+    char nameForUser[HOOK_NAME_SIZE] = "Cotopha3_EWideString";
+    NewHook(myhp, nameForUser);
+    ConsoleOutput("Insert: Cotopha3_EWideString Hook BY:IOV");
+    return true;
+}
 bool InsertCotophaHook()
 {
-	return InsertCotophaHook1() | InsertCotophaHook2();
+	return InsertCotophaHook1() || InsertCotophaHook2() || InsertCotophaHook3();
 }
 
 // jichi 5/10/2014
@@ -6573,9 +8148,13 @@ bool InsertCatSystemHook()
   // jichi 12/23/2014: Modify split for new catsystem
   bool newEngine = Util::CheckFile(L"cs2conf.dll");
   if (newEngine) {
-    hp.text_fun = SpecialHookCatSystem3; // type not needed
-    NewHook(hp, "CatSystem3");
-    ConsoleOutput("vnreng: INSERT CatSystem3");
+    //hp.text_fun = SpecialHookCatSystem3; // type not needed
+    //NewHook(hp, "CatSystem3");
+    //ConsoleOutput("vnreng: INSERT CatSystem3");
+    hp.type = BIG_ENDIAN|USING_SPLIT;
+    hp.split = pusha_esi_off - 4;
+    NewHook(hp, "CatSystem3new");
+    ConsoleOutput("vnreng: INSERT CatSystem3new");
   } else {
     hp.type = BIG_ENDIAN|USING_SPLIT;
     hp.split = pusha_edx_off - 4; // -0x10
@@ -6585,6 +8164,45 @@ bool InsertCatSystemHook()
   //RegisterEngineType(ENGINE_CATSYSTEM);
   return true;
 }
+
+bool InsertCatSystem2Hook() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/v26987
+    */
+  const BYTE bytes[] = {
+    0x38, 0x08,                                // cmp [eax],cl
+    0x0F, 0x84, XX4,                           // je cs2.exe+23E490
+    0x66, 0x66, 0x0F, 0x1F, 0x84, 0x00, XX4,   // nop word ptr [eax+eax+00000000]
+    0x4F,                                      // dec edi
+    0xC7, 0x85, XX4, XX4,                      // mov [ebp-000005A0],00000000
+    0x33, 0xF6,                                // xor esi,esi
+    0xC7, 0x85, XX4, XX4,                      // mov [ebp-0000057C],00000000
+    0x85, 0xFF                                 // test edi,edi
+  };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:CatSystem2new: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_eax_off -4;
+  hp.index = 0;
+  hp.codepage = 65001;
+  hp.type = USING_STRING;
+  ConsoleOutput("vnreng: INSERT CatSystem2new");
+  NewHook(hp, "CatSystem2new");
+  return true;
+}
+
+bool InsertCatSystemHooks()
+{return  InsertCatSystemHook() || InsertCatSystem2Hook();}
 
 bool InsertNitroplusHook()
 {
@@ -6608,6 +8226,39 @@ bool InsertNitroplusHook()
   //RegisterEngineType(ENGINE_Nitroplus);
   return true;
 }
+
+bool InsertNitroplus2Hook() {
+	//by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/v428
+    */
+	BYTE bytes[] = {
+		0x8D, 0xB4, 0x29, XX4,      // lea esi,[ecx+ebp+0000415C]
+		0x74, 0x20,                 // je Django.exe+6126E
+		0x8D, 0xBC, 0xBD, XX4,      // lea edi,[ebp+edi*4+0006410C]
+		0x8B, 0x56, 0xB0,           // mov edx,[esi-50]
+		0xE8, XX4                   // call Django.exe+51150      << hook here
+	};
+    enum { addr_offset = sizeof(bytes) - 5 };
+	ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStopAddress);
+	if (!addr) {
+		ConsoleOutput("vnreng:Nitroplus2: pattern not found");
+		return false;
+	}
+	HookParam hp = {};
+	hp.address = addr + addr_offset;
+	hp.offset = pusha_edx_off - 4; //eax
+	hp.length_offset = 1;
+	hp.type  = BIG_ENDIAN;
+	ConsoleOutput("vnreng: INSERT Nitroplus2");
+    ConsoleOutput("vnreng: Please, set text to max speed");
+	NewHook(hp, "Nitroplus2");
+	return true;
+}
+
+bool InsertNitroplusHooks()
+{return  InsertNitroplusHook() || InsertNitroplus2Hook();}
 
 /**
  *  Jazzinghen 23/05/2020: Add TokyoNecro hook
@@ -7339,6 +8990,91 @@ bool InsertMalie5Hook()
 	return false;
 }
 
+bool InsertMalie6Hook() 
+{
+  //by Blu3train
+  /*
+  * Sample games:
+  * https://vndb.org/r72689
+  * https://vndb.org/r44979
+  */
+  const BYTE bytes[] = {
+    0x8B, 0x08,              // mov ecx,[eax]     << hook here
+    0x0F, XX, XX, XX,        // movzx ecx,word ptr [ecx+edx*2]
+    0x89, 0x48, XX,          // mov [eax+04],ecx
+    0x8D, 0x4A, XX,          // lea ecx,[edx+01]
+    0x89, 0x48, XX,          // mov [eax+08],ecx
+    0x8D, 0xA4, 0x24, XX4    // lea esp,[esp+00000000]
+  };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:Malie6: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_ebx_off - 4;
+  hp.index = 0;
+  hp.text_fun = [](DWORD esp_base, HookParam* php, BYTE, DWORD *data, DWORD *split, DWORD* len)
+  {
+    const BYTE bytes_eos[] = {
+      0x07, 0x00, 0x06, 0x00          // end of string
+    };
+    if (regof(ecx, esp_base) != regof(edx, esp_base))
+        return;
+    *data += regof(edx, esp_base)*2;
+	if (DWORD foundEOS = MemDbg::findBytes(bytes_eos, sizeof(bytes_eos), (ULONG)*data, (ULONG)(*data + VNR_TEXT_CAPACITY)))
+	  *len = foundEOS - *data;
+  };
+  hp.type = USING_UNICODE | USING_STRING | NO_CONTEXT;
+  hp.filter_fun = [](LPVOID data, DWORD *size, HookParam *, BYTE)
+  {
+    auto text = reinterpret_cast<LPWSTR>(data);
+    auto len = reinterpret_cast<size_t *>(size);
+
+    size_t lenPurged = 0;
+    for (size_t i = 0; i < *len/2; i++) {
+        // utf-16 characters
+        if (text[i] >= 0x20) {
+            if (!lenPurged && text[i] == 0x3000) //skip space if first char 
+                continue;
+            text[lenPurged++] = text[i];
+        }
+        else {
+            // start command
+            if (text[i] == 0x7) {
+                wchar_t cmd=text[++i];
+                if (cmd == 0x8) { // voice id --> skip
+                    while (text[++i] != 0)
+                        ;
+                } else if (cmd == 0x1) {  // ruby
+                    while (text[++i] != 0) {
+                        if (text[i] == 0xa) { // when we reach 0xa we have the kanji part
+                            while (text[++i] != 0)
+                                ;
+                            break;
+                        }
+                        else
+                            text[lenPurged++] = text[i];
+                    }
+                } else
+				    i++;
+            }
+        }
+    }
+    *len = lenPurged * 2;
+
+    return true;
+  };
+
+  ConsoleOutput("vnreng: INSERT Malie6");
+  NewHook(hp, "Malie6");
+  return true;
+}
+
 // jichi 3/12/2015: Return guessed Malie engine year
 //int GetMalieYear()
 //{
@@ -7372,6 +9108,7 @@ bool InsertMalieHook()
     ok = InsertMalie3Hook() || ok; // jichi 3/7/2014
     ok = InsertMalie4Hook() || ok; 
 	ok = InsertMalie5Hook() || ok;
+	ok = InsertMalie6Hook() || ok;
     return ok;
   }
 }
@@ -8220,6 +9957,42 @@ bool InsertCandyHook2()
   return false;
 }
 
+bool InsertCandyHook3() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/v24878
+    */
+  const BYTE bytes[] = {
+    0xCC,                                // int 3 
+    0x55,                                // push ebp        << hook here
+    0x8B, 0xEC,                          // mov ebp,esp
+    0x6A, 0xFF,                          // push -01
+    0x68, XX4,                           // push iinari-omnibus.exe+C4366
+    0x64, 0xA1, 0x00, 0x00, 0x00, 0x00,  // mov eax,fs:[00000000]
+    0x50,                                // push eax
+    0x83, 0xEC, 0x74,                    // sub esp,74
+    0x53,                                // push ebx
+    0x56,                                // push esi
+    0x57                                 // push edi
+  };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:SystemC#3: pattern not found");
+    return false;
+  }
+  HookParam hp = {};
+  hp.address = addr + 1;
+  hp.offset = 4 * 4; // arg4
+  hp.type = USING_STRING | USING_UNICODE;
+  ConsoleOutput("vnreng: INSERT SystemC#3");
+  NewHook(hp, "SystemC#3");
+  return true;
+}
+
 /** jichi 10/2/2013: CHECKPOINT
  *
  *  [5/31/2013] 恋もHもお勉強も、おまかせ�お姉ちも�部
@@ -8267,7 +10040,7 @@ bool InsertCandyHook()
   if (Util::CheckFile(L"SystemC.exe"))
     return InsertCandyHook1();
   else
-    return InsertCandyHook2();
+    return InsertCandyHook3() || InsertCandyHook2();
     //bool b2 = InsertCandyHook2(),
     //     b3 = InsertCandyHook3();
     //return b2 || b3;
@@ -8429,6 +10202,73 @@ void InsertStuffScriptHook()
   ConsoleOutput("vnreng: INSERT StuffScriptEngine");
   NewHook(hp, "StuffScriptEngine");
   //RegisterEngine(ENGINE_STUFFSCRIPT);
+}
+bool StuffScript2Filter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+
+  if (text[0] == '-') {
+    StringFilter(text, len, "-/-", 3);
+    StringFilterBetween(text, len, "-", 1, "-", 1);
+  }
+  StringCharReplacer(text, len, "_n_r", 4, '\n');
+  StringCharReplacer(text, len, "_r", 2, ' ');
+  StringFilter(text, len, "\\n", 2);
+  StringFilter(text, len, "_n", 2);
+
+  return true;
+}
+bool InsertStuffScript2Hook() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/r41537
+    * https://vndb.org/r41539
+    */
+  const BYTE bytes[] = {
+    0x0F, XX, XX4,         // jne tokyobabel.exe+3D4E8
+    0xB9, XX4,             // mov ecx,tokyobabel.exe+54EAC
+    0x8D, 0x85, XX4,       // lea eax,[ebp+tokyobabel.exe+59B968]
+    0x8A, 0x10,            // mov dl,[eax]                         <-- hook here
+    0x3A, 0x11,            // cmp dl,[ecx]
+    0x75, 0x1A,            // jne tokyobabel.exe+3D1D7
+    0x84, 0xD2,            // test dl,dl
+    0x74, 0x12,            // je tokyobabel.exe+3D1D3
+    0x8A, 0x50, 0x01,      // mov dl,[eax+01]
+    0x3A, 0x51, 0x01,      // cmp dl,[ecx+01]
+    0x75, 0x0E,            // jne tokyobabel.exe+3D1D7
+    0x83, 0xC0, 0x02,      // add eax,02
+    0x83, 0xC1, 0x02,      // add ecx,02
+    0x84, 0xD2,            // test dl,dl
+    0x75, 0xE4,            // jne Agreement.exe+4F538
+    0x33, 0xC0,            // xor eax,eax
+    0xEB, 0x05,            // jmp Agreement.exe+4F55D
+    0x1B, 0xC0,            // sbb eax,eax
+    0x83, 0xD8, 0xFF,      // sbb eax,-01
+    XX2,                   // cmp eax,edi
+    0x0F, 0x84, XX4        // je tokyobabel.exe+3D4E8
+  };
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr)
+    return false;
+
+  HookParam hp = {};
+  hp.address = addr + 0x11;
+  hp.offset = pusha_eax_off -4;
+  hp.index = 0;
+  hp.type = USING_STRING | NO_CONTEXT;
+  hp.filter_fun = StuffScript2Filter;
+  ConsoleOutput("vnreng: INSERT StuffScript2");
+  NewHook(hp, "StuffScript2");
+  return true;
+}
+void InsertStuffScriptHooks()
+{
+  InsertStuffScriptHook();
+  InsertStuffScript2Hook();
 }
 bool InsertTriangleHook()
 {
@@ -8751,7 +10591,7 @@ bool InsertSystemAoiDynamicHook(LPVOID addr, DWORD frame, DWORD stack)
       HookParam hp = {};
       hp.offset = 0x4; // target text is on the top of the stack
       hp.text_fun = SpecialHookSystemAoi; // need to remove garbage
-      hp.type = utf16 ? USING_UNICODE : USING_STRING;
+      hp.type = utf16 ? USING_UNICODE|USING_STRING : USING_STRING;
 
       i = *(DWORD *)(k - 4); // get function call address
       if (*(DWORD *)(k - 5) == 0xe8) // short jump
@@ -8813,7 +10653,7 @@ bool InsertSystemAoiStatic(HMODULE hModule, bool wideChar) // attach scenario
   hp.offset = 4 * 1; // arg1
   //hp.split = 4 * 2; // arg2
   hp.text_fun = SpecialHookSystemAoi;
-  hp.type = wideChar ? USING_UNICODE : USING_STRING;
+  hp.type = wideChar ? USING_UNICODE|USING_STRING : USING_STRING;
   //hp.type |= NO_CONTEXT|USING_SPLIT|SPLIT_INDIRECT;
   ConsoleOutput("vnreng: INSERT static SystemAoi");
   if (wideChar)
@@ -9031,10 +10871,58 @@ bool InsertWolf2Hook()
 }
 
 } // WolfRPG namespace
+//example-game:妹！せいかつ～ファンタジー～ by:iov
+bool InsertWolf3Hook()
+{
+    const BYTE bytes[] = { 0xC7,0x45,0xFC,0x00,0x00,0x00,0x00,0x8B,0x45,0x94,0x83,0xE0,0x01 };
+    ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+    ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+    if (!addr) {
+        ConsoleOutput("vnreng:WolfRPG: pattern3 not found");
+        return false;
+    }
 
+    HookParam myhp = {};
+    myhp.address = addr+41;
+
+    myhp.type = USING_STRING | NO_CONTEXT;
+    myhp.offset = pusha_eax_off - 4;
+    myhp.type |= DATA_INDIRECT;
+    
+    myhp.index = 4;
+
+    char nameForUser[HOOK_NAME_SIZE] = "WolfRPG_String_Copy";
+    NewHook(myhp, nameForUser);
+    ConsoleOutput("Insert: WolfRPG_String_Copy Hook");
+    return true;
+}
+
+bool InsertWolf4Hook() {
+    const BYTE bytes[] = {0xC6,0x45,0xFC,0x29,0x8B,0x8D,0xE0,0xEF,0xFF,0xFF,0xE8,XX4,0x50,0x8B,0x4D,0xE8,0x2B,0x4D,0xEC };
+    ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+    ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+    if (!addr) {
+        ConsoleOutput("vnreng:WolfRPG: pattern4 not found");
+        return false;
+    }
+
+    HookParam myhp = {};
+    myhp.address = addr + 16;
+
+    myhp.type = USING_STRING | NO_CONTEXT;
+    myhp.offset = pusha_eax_off - 4;
+   // myhp.type |= DATA_INDIRECT;
+
+  //  myhp.index = 4;
+
+    char nameForUser[HOOK_NAME_SIZE] = "WolfRPG4";
+    NewHook(myhp, nameForUser);
+    ConsoleOutput("Insert: WolfRPG4 Hook");
+    return true;
+}
 bool InsertWolfHook()
 {
-  return InsertOldWolfHook(), InsertWolf2Hook();
+  return InsertOldWolfHook(), InsertWolf2Hook(), InsertWolf3Hook(), InsertWolf4Hook();
 }
 
 bool InsertIGSDynamicHook(LPVOID addr, DWORD frame, DWORD stack)
@@ -9469,23 +11357,6 @@ void SpecialHookWillPlusA(DWORD esp_base, HookParam *, BYTE index, DWORD *data, 
 
 bool InsertWillPlusAHook()
 {
-	    //by iov
-    const BYTE bytes2[] = { 0x8B,0x00,0xFF,0x76,0xFC,0x8B,0xCF,0x50 };
-    ULONG range2 = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
-    ULONG addr2 = MemDbg::findBytes(bytes2, sizeof(bytes2), processStartAddress, processStartAddress + range2);
-    if (addr2) {
-        HookParam myhp = {};
-        myhp.address = addr2 + 2;
-
-        myhp.type = USING_UNICODE | NO_CONTEXT | USING_STRING; 
-
-        myhp.offset = pusha_eax_off - 4;//esp+4
-
-        char nameForUser[HOOK_NAME_SIZE] = "WillPlus3_memcpy";
-        NewHook(myhp, nameForUser);
-        ConsoleOutput("Insert: WillPlus3_memcpy Hook");
-        return true;
-    }	
   const BYTE bytes[] = {
     0x81,0xec, 0x14,0x08,0x00,0x00 // 0042B5E0   81EC 14080000    SUB ESP,0x814	; jichi: text in eax, name in eax - 1024, able to copy
   };
@@ -9645,12 +11516,167 @@ static bool InsertNewWillPlusHook()
 	return found;
 }
 
+bool WillPlusWFilter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPWSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+
+  if (*text == L'/' || *text == L'|')
+    return false;
+
+  WideStringCharReplacer(text, len, L" \\n", 3, L' ');
+  WideStringCharReplacer(text, len, L"\\n", 2, L' ');
+  WideStringCharReplacer(text, len, L"\\d", 2, L'\"');
+  WideStringFilter(text, len, L"%LF", 3);
+  WideStringFilter(text, len, L"%LC", 3);
+  WideStringFilter(text, len, L"%K", 2);
+  WideStringFilter(text, len, L"%P", 2);
+  WideStringFilter(text, len, L"%XS", 5); // remove %XS followed by 2 chars
+  WideStringFilter(text, len, L"%XE", 3);
+
+  return true;
+}
+
+static bool InsertWillPlus4() 
+{
+  //by Blu3train
+  /*
+  * Sample games:
+  * https://vndb.org/r71235
+  */
+  const BYTE bytes[] = {
+    0x33, 0xC9,                         // xor ecx,ecx  <-- hook
+    0x8B, 0xC7,                         // mov eax,edi
+    0xC7, 0x84, 0x24, XX4, XX4,         // mov [esp+000001E0],00000007
+    0x89, 0x9C, 0x24, XX4               // mov [esp+000001DC],ebx
+  };
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:WillPlus4: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_edi_off -4;
+  hp.type = USING_UNICODE | USING_STRING;
+  hp.filter_fun = WillPlusWFilter;
+  ConsoleOutput("vnreng: INSERT WillPlus4");
+  NewHook(hp, "WillPlus4");
+  return true;
+}
+
+static bool InsertWillPlus5() 
+{
+  //by Blu3train
+  /*
+  * Sample games:
+  * https://vndb.org/v29881
+  */
+  const BYTE bytes[] = {
+    0xE8, XX4,                  // call AdvHD.exe+38550   <-- hook here
+    0x8B, 0x4B, 0x08,           // mov ecx,[ebx+08]
+    0x89, 0x8F, XX4,            // mov [edi+0000014C],ecx
+    0x85, 0xC9,                 // test ecx,ecx
+    0x74, 0x04                  // je AdvHD.exe+396C6
+  };
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:WillPlus5: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_esi_off -4;
+  hp.index = 0;
+  hp.split = pusha_ebx_off -4;
+  hp.split_index = 0;
+  hp.type = USING_UNICODE | USING_STRING | NO_CONTEXT | USING_SPLIT;
+  hp.filter_fun = WillPlusWFilter;
+  ConsoleOutput("vnreng: INSERT WillPlus5");
+  NewHook(hp, "WillPlus5");
+  return true;
+}
+
+static bool InsertWillPlus6() 
+{
+  //by Blu3train
+  /*
+  * Sample games:
+  * https://vndb.org/v47136
+  */
+  const BYTE bytes[] = {
+    0xCC,                               // int 3 
+    0x53,                               // push ebx   <-- hook here
+    0x8B, 0xDC,                         // mov ebx,esp
+    0x83, 0xEC, 0x08,                   // sub esp,08
+    0x83, 0xE4, 0xF8,                   // and esp,-08
+    0x83, 0xC4, 0x04,                   // add esp,04
+    0x55,                               // push ebp
+    0x8B, 0x6B, 0x04,                   // mov ebp,[ebx+04]
+    0x89, 0x6C, 0x24, 0x04,             // mov [esp+04],ebp
+    0x8B, 0xEC,                         // mov ebp,esp
+    0x6A, 0xFF,                         // push -01
+    0x68, XX4,                          // push AdvHD.exe+1965B0
+    0x64, 0xA1, 0x00, 0x00, 0x00, 0x00, // mov eax,fs:[00000000]
+    0x50,                               // push eax
+    0x53,                               // push ebx
+    0x81, 0xEC, 0x28, 0x01, 0x00, 0x00  // sub esp,00000128
+  };
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:WillPlus6: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr + 1;
+  hp.offset = pusha_esi_off -4;
+  hp.index = 0;
+  hp.split = pusha_ebx_off -4;
+  hp.split_index = 0;
+  hp.type = USING_UNICODE | USING_STRING | NO_CONTEXT | USING_SPLIT;
+  hp.filter_fun = WillPlusWFilter;
+  ConsoleOutput("vnreng: INSERT WillPlus6");
+  NewHook(hp, "WillPlus6");
+  return true;
+}
+
 } // unnamed namespace
+static bool InsertWillPlus3()
+{
+    const BYTE bytes2[] = { 0x8B,0x00,0xFF,0x76,0xFC,0x8B,0xCF,0x50 };
+    ULONG range2 = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+    ULONG addr2 = MemDbg::findBytes(bytes2, sizeof(bytes2), processStartAddress, processStartAddress + range2);
+    if (addr2) {
+        HookParam myhp = {};
+        myhp.address = addr2 + 2;
+
+        myhp.type = USING_UNICODE | NO_CONTEXT | USING_STRING; 
+
+        myhp.offset = pusha_eax_off - 4;//esp+4
+
+        char nameForUser[HOOK_NAME_SIZE] = "WillPlus3_memcpy";
+        NewHook(myhp, nameForUser);
+        ConsoleOutput("Insert: WillPlus3_memcpy Hook");
+        return true;
+    }	
+    return false;
+}
 
 bool InsertWillPlusHook()
 {
   bool ok = InsertOldWillPlusHook();
-  ok = InsertWillPlusWHook() || InsertWillPlusAHook() || InsertNewWillPlusHook() || ok;
+  ok = InsertWillPlus3() || ok;
+  ok = InsertWillPlus4() || ok;
+  ok = InsertWillPlus5() || ok;
+  ok = InsertWillPlus6() || ok;
+  ok = InsertWillPlusWHook() || InsertWillPlusAHook() || ok;
+  ok = InsertNewWillPlusHook() || ok;
   if (!ok) PcHooks::hookOtherPcFunctions();
   return ok;
 }
@@ -9693,6 +11719,53 @@ bool InsertTanukiHook()
   ConsoleOutput("vnreng:TanukiSoft: failed");
   return false;
 }
+bool Tanuki2Filter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+
+  if (cpp_strnstr(text, "\x81\x81", *len)) {
+    StringFilterBetween(text, len, "\x81\x81", 2, "\x81\x84", 2);
+    StringFilter(text, len, "\x81\x83", 2);
+  } else {
+    StringFilterBetween(text, len, "\x81\x83", 2, "\x81\x84", 2);
+  }
+
+  return true;
+}
+bool InsertTanuki2Hook() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/v26448
+	* https://vndb.org/v10928
+    */
+  const BYTE bytes[] = {
+    0xE8, XX4,                // call noshoujo.exe+237500        << hook here
+    0x8B, XX,                 // mov ecx,esi
+    0x83, 0xC4, 0x0C,         // add esp,0C
+    0x8D, XX, 0x01            // lea edx,[ecx+01]
+  };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+      ConsoleOutput("vnreng:TanukiSoft2: pattern not found");
+      return false;
+  }
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_esi_off -4;
+  hp.type = USING_STRING | NO_CONTEXT;
+  hp.filter_fun = Tanuki2Filter;
+  ConsoleOutput("vnreng: INSERT TanukiSoft2");
+  NewHook(hp, "TanukiSoft2");
+  return true;
+}
+bool InsertTanukiHooks()
+{ return InsertTanuki2Hook() || InsertTanukiHook();}
+
 static void SpecialHookRyokucha(DWORD esp_base, HookParam *hp, BYTE, DWORD *data, DWORD *split, DWORD *len)
 {
   const DWORD *base = (const DWORD *)esp_base;
@@ -10791,6 +12864,63 @@ bool InsertArtemis2Hook()
   return true;
 }
 
+bool InsertArtemis2EngHook()
+{
+  //by Blu3train
+  const BYTE bytes[] = {
+    0x55,                   // 55                       | push ebp                                |
+    0x8B, 0xEC,             // 8BEC                     | mov ebp,esp                             |
+    0x83, 0xE4, 0xF8,       // 83E4 F8                  | and esp,FFFFFFF8                        |
+    0x83, 0xEC, 0x3C,       // 83EC 3C                  | sub esp,3C                              |
+    0xA1, XX4,              // A1 6C908600              | mov eax,dword ptr ds:[86906C]           |
+    0x33, 0xC4,             // 33C4                     | xor eax,esp                             |
+    0x89, 0x44, 0x24, 0x38, // 894424 38                | mov dword ptr ss:[esp+38],eax           |
+    0x8B, 0x45, 0x0C,       // 8B 45 0C                 | mov eax,[ebp+0C]                        |
+    0x53,                   // 53                       | push ebx                                |
+    0x56,                   // 56                       | push esi                                |
+    0x8B, 0x75, 0x08,       // 8B 75 08                 | mov esi,[ebp+08]                        |
+    0x57,                   // 57                       | push edi                                |
+    0x33, 0xFF,             // 33 FF                    | xor edi,edi                             |
+    0x80, 0x3E, 0x00,       // 80 3E 00                 | cmp byte ptr [esi],00                   |
+    0x89, 0x4C, 0x24, 0x18, // 89 4C 24 18              | mov [esp+18],ecx                        |
+    0x89, 0x44, 0x24, 0x28, // 89 44 24 28              | mov [esp+28],eax                        |
+    0x89, 0x7C, 0x24, 0x14, // 89 7C 24 14              | mov [esp+14],edi                        |
+    0x89, 0x7C, 0x24, 0x10, // 89 7C 24 10              | mov [esp+10],edi                        |
+  };
+
+  enum { addr_offset = 0 }; // distance to the beginning of the function, which is 0x55 (push ebp)
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("Textractor:Artemis2Eng: pattern not found");
+    return false;
+  }
+  addr += addr_offset;
+  enum { push_ebp = 0x55 }; // beginning of the function
+  if (*(BYTE *)addr != push_ebp) {
+    ConsoleOutput("Textractor:Artemis2Eng: beginning of the function not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_ebx_off - 4;
+  hp.index = 0;
+  hp.type = USING_UTF8 | USING_STRING;
+
+  ConsoleOutput("Textractor: INSERT Artemis2Eng");
+  ConsoleOutput("To preserve spacing between words, besides selecting Artemis2Eng Hook, check \"Flush delay string spacing\" option in Textractor settings");
+  NewHook(hp, "Artemis2Eng");
+
+  return true;
+}
+
+bool InsertArtemis2Hooks() {
+  bool ok = InsertArtemis2Hook();
+  ok = InsertArtemis2EngHook() || ok;
+  return ok;
+}
+
 bool InsertArtemis3Hook()
 {
   const BYTE bytes[] = {
@@ -10842,8 +12972,65 @@ bool InsertArtemis3Hook()
   return true;
 }
 
+bool InsertArtemis3EngHook()
+{
+  //by Blu3train
+  const BYTE bytes[] = {
+    0x55,                   // 55                       | push ebp                                |
+    0x8B, 0xEC,             // 8BEC                     | mov ebp,esp                             |
+    0x53,                   // 53                       | push ebx                                |
+    0x56,                   // 56                       | push esi                                |
+    0x57,                   // 57                       | push edi                                |
+    0x8B, 0x7D, 0x08,       // 8B 7D 08                 | mov edi,[ebp+08]                        |
+	0x8D, 0x45, 0x08,       // 8D 45 08                 | lea eax,[ebp+08]                        |
+    0x57,                   // 57                       | push edi                                |
+    0x50,                   // 50                       | push eax                                |
+    0x8B, 0xD9,             // 8BD9                     | mov ebx,ecx                             |
+    0xE8, 0x0B, 0x49, 0x00, 0x00,  // E8 0B490000              |call exe+16A9D0                          |
+    0x8B, 0x75, 0x08,       // 8B 75 08                 | mov esi,[ebp+08]                        |
+    0x3B, 0x33,             // 3B 33                    | cmp esi,[ebx]                           |
+    0x74, XX,               // 74 33                    | je XX                                   |
+    0x83, 0x7E, 0x24, 0x10, // 83 7E 24 10              | cmp dword ptr [esi+24],10               |
+	0x8D, 0x56, 0x10,       // 8D 56 10                 | lea edx,[esi+10]                        |
+    0x72, XX,               // 72 03                    | jb xx                                   |
+    0x8B, 0x56, 0x10,       // 8B 56 10                 | mov edx,[esi+10]                        |
+  };
+
+  enum { addr_offset = 0 }; // distance to the beginning of the function, which is 0x55 (push ebp)
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("Textractor:Artemis3Eng: pattern not found");
+    return false;
+  }
+  addr += addr_offset;
+  enum { push_ebp = 0x55 }; // beginning of the function
+  if (*(BYTE *)addr != push_ebp) {
+    ConsoleOutput("Textractor:Artemis3Eng: beginning of the function not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_ebx_off - 4;
+  hp.index = 0;
+  hp.type = USING_UTF8 | USING_STRING | KNOWN_UNSTABLE;
+
+  ConsoleOutput("Textractor: INSERT Artemis3Eng");
+  ConsoleOutput("To preserve spacing between words, besides selecting Artemis3Eng Hook, check \"Flush delay string spacing\" option in Textractor settings");
+  NewHook(hp, "Artemis3Eng");
+
+  return true;
+}
+
+bool InsertArtemis3Hooks() {
+  bool ok = InsertArtemis3Hook();
+  ok = InsertArtemis3EngHook() || ok;
+  return ok;
+}
+
 bool InsertArtemisHook()
-{ return InsertArtemis1Hook() ||  InsertArtemis2Hook() || InsertArtemis3Hook(); }
+{ return InsertArtemis1Hook() ||  InsertArtemis2Hooks() || InsertArtemis3Hooks(); }
 
 /**
  *  jichi 1/2/2014: Taskforce2 Engine
@@ -11533,8 +13720,116 @@ bool InsertAOS2Hook()
   return true;
 }
 
+bool InsertAOS2newHook() {
+	//by Blu3train
+	BYTE bytes[] = {
+		0x0F, 0xB6, 0x07,
+		0xC1, 0xE0, 0x08,
+		0x0B, 0xC1,
+		0x8B, 0x0D, XX4,
+		0x81, 0xE3, 0xFF, 0xFF, 0xFF, 0x00,
+		0x89, 0x6C, 0x24, 0x14,
+		0x89, 0x44, 0x24, 0x0C,
+		0x85, 0xED
+	};
+	ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStopAddress);
+	if (!addr) {
+		ConsoleOutput("vnreng:AOS2new: pattern not found");
+		return false;
+	}
+	HookParam hp = {};
+	hp.address = addr;
+	hp.offset = pusha_edi_off - 4; //edi
+	hp.length_offset = 1;
+	hp.type  = NO_CONTEXT | DATA_INDIRECT;
+	hp.index =0;
+
+	ConsoleOutput("vnreng: INSERT AOS2new");
+
+	NewHook(hp, "AOS2new");
+	return true;
+
+}
+
+bool InsertAOS2Hooks() {
+  bool ok = InsertAOS2newHook();
+  ok = InsertAOS2Hook() || ok;
+  return ok;
+}
+
+bool InsertAOS3Hook() {
+	//by Blu3train
+	BYTE bytes[] = {
+		0x8B, 0x15, XX4,
+		0x0F, 0xBE, 0x02,
+		0xC1, 0xE0, 0x08,
+		0x8B, 0x0D, XX4,
+		0x0F, 0xBE, 0x51, 0x01,
+		0x0B, 0xC2,
+		0x66, 0x89, 0x85, 0x98, 0xFF, 0xFE, 0xFF,
+		0xA1, XX4,
+		0x50
+	};
+	ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStopAddress);
+	if (!addr) {
+		ConsoleOutput("vnreng:AOS3: pattern not found");
+		return false;
+	}
+	HookParam hp = {};
+	hp.address = addr;
+	hp.offset = pusha_eax_off - 4; //eax
+	hp.length_offset = 1;
+	//hp.type  = NO_CONTEXT | DATA_INDIRECT;
+	hp.type  = DATA_INDIRECT;
+	hp.index =0;
+
+	ConsoleOutput("vnreng: INSERT AOS3");
+
+	NewHook(hp, "AOS3");
+	return true;
+
+}
+
+bool CarriageReturnCharToSpaceFilter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  CharReplacer(reinterpret_cast<LPSTR>(data), reinterpret_cast<size_t *>(size), '\r', ' ');
+  return true;
+}
+
+bool InsertAOS4Hook() {
+	//by Blu3train
+	/*
+	* Sample games:
+	* https://vndb.org/v15699
+	*/
+	BYTE bytes[] = {
+		0x55,                        // push ebp        << hook here
+		0x8B, 0xEC,                  // mov ebp,esp
+		0x83, 0xEC, 0x14,            // sub esp,14
+		0xA1, XX4                    // mov eax,[spiral.exe+C0104]
+	};
+	ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+	ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+	if (!addr) {
+		ConsoleOutput("vnreng:AOS4: pattern not found");
+		return false;
+	}
+	HookParam hp = {};
+	hp.address = addr;
+	hp.offset = pusha_edx_off - 4; //edx
+	hp.length_offset = 1;
+	hp.type  = NO_CONTEXT | DATA_INDIRECT;
+	hp.filter_fun = CarriageReturnCharToSpaceFilter; 
+	hp.index =0;
+
+	ConsoleOutput("vnreng: INSERT AOS4");
+
+	NewHook(hp, "AOS4");
+	return true;
+}
+
 bool InsertAOSHook()
-{ return InsertAOS1Hook() ||  InsertAOS2Hook();}
+{ return InsertAOS1Hook() ||  InsertAOS2Hooks() || InsertAOS3Hook() || InsertAOS4Hook();}
 
   
 /**
@@ -12285,6 +14580,52 @@ bool InsertSilkysHook()
   return true;
 }
 
+bool Silkys2Filter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPWSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+
+  WideStringCharReplacer(text, len, L"\\i", 2, L'\'');
+
+  return true;
+}
+
+bool InsertSilkys2Hook() 
+{
+  //by Blu3train
+  /*
+  * Sample games:
+  * https://vndb.org/r89173
+  */
+  const BYTE bytes[] = {
+    0x75, 0x10,              // jne doukyuusei.exe+A5F7E
+    0x56,                    // push esi
+    0x57,                    // push edi
+    0xE8, XX4                // call doukyuusei.exe+A6120        << hook here
+  };
+  enum { addr_offset = sizeof(bytes) - 5 };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:Silkys2: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr + addr_offset;
+  hp.offset = pusha_edi_off -4;
+  hp.index = 0;
+  hp.filter_fun = Silkys2Filter;
+  hp.type = USING_UNICODE | USING_STRING | NO_CONTEXT;
+  ConsoleOutput("vnreng: INSERT Silkys2");
+  NewHook(hp, "Silkys2");
+  return true;
+}
+
+bool InsertSilkysHooks()
+{ return InsertSilkysHook() || InsertSilkys2Hook();}
+
 /** jichi 6/1/2014 Eushully
  *  Insert to the last GetTextExtentPoint32A
  *
@@ -12908,6 +15249,40 @@ static bool InsertNewPal2Hook()
   NewHook(hp, "Pal");
   return true;
 }
+
+static bool InsertNewPal3Hook() 
+{
+  //by Blu3train
+  /*
+  * Sample games:
+  * https://vndb.org/v11093
+  * https://vndb.org/v16212
+  */
+  const BYTE bytes[] = {
+    0x8D, 0xBB, 0x98, 0x22, 0x00, 0x00,  // lea edi,[ebx+00002298]
+    0x83, 0xE7, 0xFC,                    // and edi,-04
+    0x89, 0x83, 0x94, 0x22, 0x00, 0x00,  // mov [ebx+00002294],eax
+    0x8B, 0x74, 0x24, 0x28,              // mov esi,[esp+28]
+    0x8B, 0x44, 0x0E, 0xFC               // mov eax,[esi+ecx-04]  << hook here
+  };
+  enum { addr_offset = sizeof(bytes) - 4 };
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:Pal3: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr + addr_offset;
+  hp.offset = pusha_esi_off -4;
+  hp.codepage = 65001;
+  hp.type = USING_STRING;
+  ConsoleOutput("vnreng: INSERT Pal3");
+  NewHook(hp, "Pal3");
+  return true;
+}
+
 bool InsertPalHook() // use Old Pal first, which does not have ruby
 { 
 	PcHooks::hookOtherPcFunctions();
@@ -12917,7 +15292,7 @@ bool InsertPalHook() // use Old Pal first, which does not have ruby
 	strcpy_s(hp.function, "PalFontDrawText");
 	hp.offset = 8;
 	NewHook(hp, "PalFontDrawText");
-	return InsertOldPalHook() || InsertNewPal1Hook() || InsertNewPal2Hook(); 
+	return InsertNewPal3Hook() || InsertOldPalHook() || InsertNewPal1Hook() || InsertNewPal2Hook(); 
 }
 
 bool InsertPONScripterHook()
@@ -12945,6 +15320,252 @@ bool InsertPONScripterHook()
 	}
 	else ConsoleOutput("Textractor: failed to find string");
 	return false;
+}
+
+void ONScripterruCommonFilter(char *text, size_t *len)
+{
+  StringCharReplacer(text, len, "{n}", 3, ' ');
+
+  if (cpp_strnstr(text, "{c:", *len)) {
+    StringFilterBetween(text, len, "{c:", 3, ":", 1);
+  }
+  if (cpp_strnstr(text, "{e:", *len)) {
+    StringFilterBetween(text, len, "{e:", 3, ":", 1);
+  }
+  if (cpp_strnstr(text, "{f:", *len)) {
+    StringFilterBetween(text, len, "{f:", 3, ":", 1);
+  }
+  if (cpp_strnstr(text, "{i:", *len)) {
+    StringFilter(text, len, "{i:", 3);
+  }
+  if (cpp_strnstr(text, "{p:", *len)) {
+    StringFilterBetween(text, len, "{p:", 3, "}", 1);
+  }
+  CharFilter(text, len, '}');
+
+  if (cpp_strnstr(text, "[", *len)) {
+    StringFilterBetween(text, len, "[", 1, "]", 1);
+  }
+
+}
+
+bool ONScripterru1Filter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+
+  if ( *len == 0 || text[0] == ':' || text[1] == '{')
+	return false;
+
+  ONScripterruCommonFilter(text, len);
+  CharFilter(text, len, '`');
+
+  return true;
+}
+
+bool InsertONScripterruHook1() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * Umineko Project (all text displayed)
+    */
+  const BYTE bytes[] = {
+    0x90,                      // nop 
+    0x55,                      // push ebp   << hook here
+    0x57,                      // push edi
+    0x31, 0xED,                // xor ebp,ebp
+    0x56,                      // push esi
+    0x53,                      // push ebx
+    0x83, 0xEC, 0x3C           // sub esp,3C
+  };
+
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStopAddress);
+  if (!addr) {
+    ConsoleOutput("vnreng:ONScripter-RU 1: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr + 1;
+  hp.offset = pusha_eax_off -4;
+  hp.type =  USING_STRING | USING_UTF8;
+  hp.filter_fun = ONScripterru1Filter;
+  ConsoleOutput("vnreng: INSERT ONScripter-RU 1");
+  NewHook(hp, "ONScripter-RU1");
+
+  return true;
+
+}
+
+void StringBetween(char *str, size_t *size, const char *fr, size_t frlen, const char *to, size_t tolen)
+{
+  size_t len = *size,
+         curlen;
+
+  char *start = cpp_strnstr(str, fr, len);
+  if (!*start)
+	  return;
+  //start += frlen;
+  char *end = cpp_strnstr((start += frlen), to, len - (start - str));
+  if (!*end)
+	  return;
+  ::memmove(str, start, end - start);
+
+  *size = end - start;
+  //str[*size] = '\0';
+}
+
+bool ONScripterru2Filter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+
+  StringBetween(text, len, "`", 1, "`", 1);
+
+  ONScripterruCommonFilter(text, len);
+
+  return true;
+}
+
+bool InsertONScripterruHook2() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * Umineko Project (partial text displayed)
+    */
+  const BYTE bytes[] = {
+    0x0F, 0xB6, 0x04, 0x18,    // movzx eax,byte ptr [eax+ebx]   << hook here
+    0x89, 0x74, 0x24, 0x04,    // mov [esp+04],esi
+    0x43,                      // inc ebx
+    0x89, 0x44, 0x24, 0x08     // mov [esp+08],eax
+  };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:ONScripter-RU 2: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_eax_off -4;
+  hp.split  = -0x1C -4;
+  hp.type =  USING_STRING | USING_UTF8 | USING_SPLIT | KNOWN_UNSTABLE;
+  //hp.type =  USING_STRING | USING_UTF8 | USING_SPLIT;
+  hp.filter_fun = ONScripterru2Filter;
+  ConsoleOutput("vnreng: INSERT ONScripter-RU 2");
+  NewHook(hp, "ONScripter-RU2");
+
+  return true;
+}
+
+bool InsertONScripterruHooks()
+{
+  bool ok = InsertONScripterruHook1();
+  return  InsertONScripterruHook2() || ok;
+}
+
+bool PONScripterFilter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+  static std::string prevText;
+
+  for (int i=0; i<*len; i++) {
+    if (text[i] == '^' || text[i]=='@' || text[i]=='\\' || text[i]=='\n') {
+      text[i] = '\0';
+      *len = i;
+      break;
+    }
+  }
+
+  if (!prevText.compare(text))
+    return false;
+  prevText = text;
+
+  StringFilter(text, len, "#", 7);	// remove # followed by 6 chars
+  
+  return true;
+}
+
+bool InsertPONScripterEngHook() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/v24770
+    */
+  const BYTE bytes[] = {
+    0x89, 0xD0,                 // mov eax,edx
+    0x8D, 0x75, 0xD8,           // lea esi,[ebp-28]
+    0x89, 0x55, 0xB4,           // mov [ebp-4C],edx
+    0x83, 0xC0, 0x01,           // add eax,01
+    0x89, 0x45, 0xC0            // mov [ebp-40],eax    << hook here
+  };
+  enum { addr_offset = sizeof(bytes) - 3 };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:PONScripterEng: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr + addr_offset;
+  hp.offset = pusha_eax_off -4;
+  hp.index = 0;
+  hp.codepage = 65001;
+  hp.type = USING_STRING;
+  hp.filter_fun = PONScripterFilter;
+  ConsoleOutput("vnreng: INSERT PONScripterEng");
+  NewHook(hp, "PONScripterEng");
+  return true;
+}
+
+bool InsertPONScripterJapHook() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/v24770
+    */
+  const BYTE bytes[] = {
+    0x8D, 0x87, XX4,            // lea eax,[edi+00000198]               << hook here
+    0x8B, 0x0D, XX4,            // mov ecx,[ciconia_phase1.exe+3D82C0]
+    0x89, 0x55, 0xB4,           // mov [ebp-4C],edx
+    0xC6, 0x45, 0xAE, 0x00,     // mov byte ptr [ebp-52],00
+    0x89, 0x45, 0xA4,           // mov [ebp-5C],eax
+    0x8B, 0x01,                 // mov eax,[ecx]
+    0x8B, 0x75, 0xB4            // mov esi,[ebp-4C]
+  };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:PONScripterJap: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_edx_off -4;
+  hp.index = 0;
+  hp.codepage = 65001;
+  hp.type = USING_STRING;
+  hp.filter_fun = PONScripterFilter;
+  ConsoleOutput("vnreng: INSERT PONScripterJap");
+  NewHook(hp, "PONScripterJap");
+  return true;
+}
+
+bool InsertPONScripterHooks()
+{
+  bool ok = InsertPONScripterEngHook() && InsertPONScripterJapHook();
+  return  ok || InsertPONScripterHook(); // If a language hook is missing, the original code is executed
 }
 
 /** jichi 7/6/2014 NeXAS
@@ -13226,6 +15847,63 @@ bool InsertNeXASHook()
   return true;
 }
 
+bool NeXAS2Filter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+  static std::string prevText;
+
+  StringCharReplacer(text, len, "@n", 2, ' ');
+  StringFilter(text, len, "@v", 7); // remove "@v" followed by 5 char
+  StringFilter(text, len, "@p", 2);
+  StringFilter(text, len, "@k", 2);
+  if (cpp_strnstr(text, "@", *len))
+    return false;
+
+  if (prevText.find(text, 0, *len) != std::string::npos) // Check if the string is present in the previous one
+    return false;
+  prevText.assign(text, *len);
+ 
+  return true;
+}
+
+bool InsertNeXAS2Hook() {
+	//by Blu3train
+	/*
+	* Sample games:
+	* https://vndb.org/r113353
+	*/
+	const BYTE bytes[] = {
+		0x50,                    // push eax             <- hook here
+		0xE8, XX4,               // call Aquarium.exe+2796B0
+		0x8B, 0x86, XX4,         // mov eax,[esi+000000A4]
+		0x8B, 0x40, 0xFC         // mov eax,[eax-04]
+	};
+
+	ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+	ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+	if (!addr) {
+		ConsoleOutput("vnreng:NeXAS2: pattern not found");
+		return false;
+	}
+
+	HookParam hp = {};
+	hp.address = addr;
+	hp.offset = pusha_eax_off -4;
+    hp.index = 0;
+	hp.split = pusha_edx_off -4;
+    hp.split_index = 0;
+	hp.type = USING_STRING | USING_UTF8 | USING_SPLIT;
+	hp.filter_fun = NeXAS2Filter;
+	ConsoleOutput("vnreng: INSERT NeXAS2");
+	NewHook(hp, "NeXAS2");
+
+	return true;
+}
+
+bool InsertNeXASHooks()
+{ return InsertNeXASHook() || InsertNeXAS2Hook();}
+
 /** jichi 7/6/2014 YukaSystem2
  *  Sample game: セミラミスの天秤
  *
@@ -13289,6 +15967,7 @@ bool InsertNeXASHook()
  *  004010ef     cc             int3
  */
 
+/*
 // Ignore image and music file names
 // Sample text: "Voice\tou00012.ogg""運命論って云うのかなあ……神さまを信じてる人が多かったからだろうね、何があっても、それ�神さまが�刁�ちに与えられた試練なんだって、そ぀�ってたみたい。勿論、今でもそ぀��てあ�人はぁ�ぱぁ�るん�けど�
 // Though the input string is UTF-8, it should be ASCII compatible.
@@ -13350,6 +16029,124 @@ bool InsertYukaSystem2Hook()
   NewHook(hp, "YukaSystem2");
   return true;
 }
+*/
+
+bool YukaSystem2Filter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+
+  // Try to identify if the first two characters are urf-8
+  if (*len < 3) return false;
+
+  for (int i=0; i<*len; i++)
+    if (text[i] > 0 && (text[i]!='@' && text[i]!='r' && text[i]!='(' && text[i]!=',' && text[i]!=')' && text[i]!=' '))
+	  return false; //ascii uses only 7 bits. Skip "@r(,) "
+
+  //Check characters (3 bytes) for utf-8
+  if (*len < 4) {
+    if (text[0]<'\xe2' || text[0]>'\xef') return false;
+  }
+  else 
+    if (text[0]<'\xe2' || text[0]>'\xef' || text[3]<'\xe2' || text[3]>'\xef') return false;
+
+  if (cpp_strnstr(text, "@r(", *len)) {
+    StringFilter(text, len, "@r(", 3);
+    StringFilterBetween(text, len, ",", 1, ")", 1);
+  }
+
+  return true;
+}
+
+bool InsertYukaSystem2Hook()
+{
+  //mod by Blu3train
+  /*
+  * Sample games:
+  * https://vndb.org/v14760
+  */
+  const BYTE bytes[] = {
+    0x55,            // 004010e0  /$ 55             push ebp ; jichi; hook here
+    0x8b,0xec,       // 004010e1  |. 8bec           mov ebp,esp
+    0x8b,0x45, 0x08, // 004010e3  |. 8b45 08        mov eax,dword ptr ss:[ebp+0x8] ; jichi: ebp+0x8 = arg2
+    0x8b,0x4d, 0x0c, // 004010e6  |. 8b4d 0c        mov ecx,dword ptr ss:[ebp+0xc]
+    0x8a,0x11,       // 004010e9  |. 8a11           mov dl,byte ptr ds:[ecx]
+    0x88,0x10,       // 004010eb  |. 8810           mov byte ptr ds:[eax],dl    ; jichi: eax is the address to text
+    0x5d,            // 004010ed  |. 5d             pop ebp
+    0xc3             // 004010ee  \. c3             retn
+  };
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  //GROWL_DWORD(addr); // supposed to be 0x4010e0
+  if (!addr) {
+    ConsoleOutput("vnreng:YukaSystem2: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = 1 * 4; //arg 1
+  hp.split  = 2 * 4; //arg 2
+  hp.type = NO_CONTEXT | USING_STRING | USING_UTF8 | USING_SPLIT; // UTF-8, though
+  hp.filter_fun = YukaSystem2Filter;
+  ConsoleOutput("vnreng: INSERT YukaSystem2");
+  NewHook(hp, "YukaSystem2");
+
+  return true;
+}
+
+bool YukaSystem1Filter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+
+  if (*len == 0) return false;
+
+  // if acii add a space at the end of the sentence overwriting null terminator
+  if (*len >=2 && text[*len-2]>0)
+    text[(*len)++] = ' ';
+
+  if (cpp_strnstr(text, "@r(", *len)) {
+    StringFilterBetween(text, len, "@r(", 3, ")", 1); // @r(2,はと)
+  }
+
+  return true;
+}
+
+bool InsertYukaSystem1Hook()
+{
+  //mod by Blu3train
+  /*
+  * Sample games:
+  * https://vndb.org/r71601
+  * https://vndb.org/v7507
+  */
+  const BYTE bytes[] = {
+    0x80, 0x3D, XX4, 0x01,      // cmp byte ptr [kimihime.exe+16809C],01     << hook here
+    0x75, 0x11,                 // jne kimihime.exe+42D74
+    0xB9, XX4,                  // mov ecx,kimihime.exe+C7F8C
+    0xC6, 0x05, XX4, 0x00       // mov byte ptr [kimihime.exe+1516C5],00
+  };
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:YukaSystem1: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_eax_off - 4;
+  hp.type = USING_STRING | KNOWN_UNSTABLE;
+  hp.filter_fun = YukaSystem1Filter;
+  ConsoleOutput("vnreng: INSERT YukaSystem1");
+  NewHook(hp, "YukaSystem1");
+
+  return true;
+}
+
+bool InsertYukaSystemHooks()
+{ return InsertYukaSystem1Hook() || InsertYukaSystem2Hook();}
 
 /** jichi 8/2/2014 2RM
  *  Sample games:
@@ -14095,6 +16892,7 @@ bool InsertHorkEyeHook()
 	  hp.address = addr;
 	  hp.offset = 4;
 	  hp.type = USING_STRING;
+	  hp.filter_fun = HorkEyeFilter;
 	  ConsoleOutput("Textractor: INSERT HorkEye2");
 	  NewHook(hp, "HorkEye2");
 	  return true;
@@ -16962,6 +19760,7 @@ bool InsertAdobeFlash10Hook()
 */
 bool InsertRenpyHook()
 {
+	bool ok = false;
     wchar_t python[] = L"python2X.dll", libpython[] = L"libpython2.X.dll";
     for (wchar_t* name : { python, libpython })
     {
@@ -16974,32 +19773,77 @@ bool InsertRenpyHook()
                 wcscpy_s(spDefault.exportModule, name);
                 HookParam hp = {};
                 hp.address = (DWORD)GetProcAddress(module, "PyUnicodeUCS2_Format");
-                if (!hp.address)
+                if (hp.address)
                 {
-                    ConsoleOutput("Textractor: Ren'py failed: failed to find PyUnicodeUCS2_Format");
-                    return false;
-                }
-                hp.offset = 4;
-                hp.index = 0xc;
-                hp.length_offset = 0;
-                //hp.split = pusha_ebx_off - 4;
-                hp.text_fun = [](auto, auto, auto, DWORD* data, DWORD* split, DWORD* count)
+					hp.offset = 4;
+					hp.index = 0xc;
+					hp.length_offset = 0;
+					//hp.split = pusha_ebx_off - 4;
+					hp.type = USING_STRING | USING_UNICODE | NO_CONTEXT | DATA_INDIRECT/* | USING_SPLIT*/;
+					hp.filter_fun = [](LPVOID data, DWORD *size, HookParam *, BYTE)
+					{
+						static std::wstring prevText;
+						auto text = reinterpret_cast<LPWSTR>(data);
+						auto len = reinterpret_cast<size_t *>(size);
+
+						if (cpp_wcsnstr(text, L"%", *len/sizeof(wchar_t)))
+							return false;
+						if (cpp_wcsnstr(text, L"{", *len/sizeof(wchar_t))) {
+							WideStringCharReplacer(text, len, L"{i}", 3, L'\'');
+							WideStringCharReplacer(text, len, L"{/i}", 4, L'\'');
+							WideStringFilterBetween(text, len, L"{", 1, L"}", 1);
+						}
+						WideStringFilter(text, len, L"^", 2); // remove ^ followed by 1 char
+						WideCharReplacer(text, len, L'\n', L' ');
+
+						if (prevText.length()==*len/sizeof(wchar_t) && prevText.find(text, 0, *len/sizeof(wchar_t))!=std::string::npos) // Check if the string is the same as the previous one
+							return false;
+						prevText.assign(text, *len/sizeof(wchar_t));
+						
+						return true;
+					};
+					NewHook(hp, "Ren'py UCS2Format");
+					ok = true;
+				}
+                hp.address = (DWORD)GetProcAddress(module, "PyUnicodeUCS2_Replace");
+                if (hp.address)
                 {
-                    *data = *(DWORD*)(*data + 0xc);
-                    *count = wcslen((wchar_t*)*data) * sizeof(wchar_t);
-                    *split = wcschr((wchar_t*)*data, L'%') == nullptr;
-                };
-                hp.type = USING_STRING | USING_UNICODE | NO_CONTEXT | DATA_INDIRECT/* | USING_SPLIT*/;
-                //hp.filter_fun = [](void* str, auto, auto, auto) { return *(wchar_t*)str != L'%'; };
-                NewHook(hp, "Ren'py");
-                return true;
+					hp.offset = 3 * 4; //arg 3;
+					hp.index = 0xC;
+					hp.length_offset = 0;
+					hp.split = 2 * 4; //arg 2;
+					hp.type = USING_STRING | USING_UNICODE | DATA_INDIRECT | USING_SPLIT;
+					hp.filter_fun = [](LPVOID data, DWORD *size, HookParam *, BYTE)
+					{
+						static std::wstring prevText;
+						auto text = reinterpret_cast<LPWSTR>(data);
+						auto len = reinterpret_cast<size_t *>(size);
+
+						if (cpp_wcsnstr(text, L"{fast}", *len/sizeof(wchar_t)))
+							return false;
+						if (cpp_wcsnstr(text, L"{", *len/sizeof(wchar_t))) {
+							WideStringCharReplacer(text, len, L"{i}", 3, L'\'');
+							WideStringCharReplacer(text, len, L"{/i}", 4, L'\'');
+							WideStringFilterBetween(text, len, L"{", 1, L"}", 1);
+						}
+						WideCharReplacer(text, len, L'\n', L' ');
+
+						if (prevText.length()==*len/sizeof(wchar_t) && prevText.find(text, 0, *len/sizeof(wchar_t))!=std::string::npos) // Check if the string is the same as the previous one
+							return false;
+						prevText.assign(text, *len/sizeof(wchar_t));
+						
+						return true;
+					};
+					NewHook(hp, "Ren'py UCS2Replace");
+					ok = true;
+				}
             }
         }
     }
-	ConsoleOutput("Textractor: Ren'py failed: failed to find python2X.dll");
-	return false;
+	if ( !ok )
+		ConsoleOutput("Textractor: Ren'py failed: failed to find python2X.dll");
+	return ok;
 }
-
 void InsertMonoHook(HMODULE h)
 {
 	static HMODULE mono = h;
@@ -17088,6 +19932,98 @@ bool NoAsciiFilter(LPVOID data, DWORD *size, HookParam *, BYTE)
 			if (text[i] > 127)
 				return true;
 	return false;
+}
+bool InsertAnimHook() {
+    const BYTE bytes[] = { 0xC7,0x45,0xFC,0x01,0x00,0x00,0x00,0x8B,0x4D,0x10,0x51,0x8D,0x8D,0x40,0x7E,0xFF,0xFF };
+    ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+    ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+    if (!addr) {
+        ConsoleOutput("vnreng:Anim: pattern not found");
+        return false;
+    }
+    HookParam myhp = {};
+    myhp.address = addr+10;
+
+    myhp.type = USING_STRING| NO_CONTEXT; // /HQ 不使用上下文区分 把所有线程的文本都提取
+   
+    // data_offset
+    myhp.offset = pusha_ecx_off - 4;//esp+4
+
+    char nameForUser[HOOK_NAME_SIZE] = "Anim";
+    NewHook(myhp, nameForUser);
+    ConsoleOutput("Insert: Anim Hook by:IOV");
+    return true;
+}
+
+bool InsertAnim2Hook() {
+    const BYTE bytes[] = { 0xC7,0x45,0xFC,0x01,0x00,0x00,0x00,0x8B,0x45,0x10,0x50,0x8D,0x8D,0xAC,0x7E,0xFF,0xFF };
+    ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+    ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+    if (!addr) {
+        ConsoleOutput("vnreng:Anim2: pattern not found");
+        return false;
+    }
+    HookParam myhp = {};
+    myhp.address = addr + 10;
+
+    myhp.type = USING_STRING | NO_CONTEXT; 
+
+    // data_offset
+    myhp.offset = pusha_eax_off - 4;//esp+4
+
+    char nameForUser[HOOK_NAME_SIZE] = "Anim2";
+    NewHook(myhp, nameForUser);
+    ConsoleOutput("Insert: Anim2 Hook by:IOV");
+    return true;
+}
+bool Anim3Filter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+
+  StringFilterBetween(text, len, "\x81\x40", 2, "@m", 2); // @r(2,はと)
+  StringFilterBetween(text, len, "\x81\x40", 2, "@n", 2); // @r(2,はと)
+  StringCharReplacer(text, len, "@b", 2, ' ');
+  StringCharReplacer(text, len, "\x81\x42", 2, '.');
+  StringCharReplacer(text, len, "\x81\x48", 2, '?');
+  StringCharReplacer(text, len, "\x81\x49", 2, '!');
+
+  return true;
+}
+
+bool InsertAnim3Hook()
+{
+  //mod by Blu3train
+  /*
+  * Sample games:
+  * https://vndb.org/v17427
+  * https://vndb.org/v18837
+  */
+  const BYTE bytes[] = {
+    0xCC,                       // int 3 
+    0x55,                       // push ebp      << hook here
+    0x8B, 0xEC,                 // mov ebp,esp
+    0x81, 0xEC, XX4,            // sub esp,00000830
+    0xA1, XX4,                  // mov eax,[musu_mama.exe+A91F0]
+    0x33, 0xC5,                 // xor eax,ebp
+    0x89, 0x45, 0xE8            // mov [ebp-18],eax
+  };
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:Anim3: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr + 1;
+  hp.offset = pusha_edx_off - 4;
+  hp.type = USING_STRING;
+  hp.filter_fun = Anim3Filter;
+  ConsoleOutput("vnreng: INSERT Anim3");
+  NewHook(hp, "Anim3");
+
+  return true;
 }
 
 bool InsertMonoHooks()
@@ -21744,6 +24680,1717 @@ bool InsertNamcoPS2Hook()
   return addr;
 }
 #endif // 0
+
+bool Minori1EngFilter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+  StringCharReplacer(text, len, "\\n", 2, ' ');
+  StringFilter(text, len, "\\a", 2);
+  StringFilter(text, len, "\\v", 2);
+  CharReplacer(text, len, '\xC4', '-');
+  CharReplacer(text, len, '\x93', '"');
+  CharReplacer(text, len, '\x94', '"');
+  CharReplacer(text, len, '\x92', '\'');
+  StringCharReplacer(text, len, "\\I", 2, '\'');
+  StringCharReplacer(text, len, "\\P", 2, '\'');
+
+  return true;
+}
+
+bool Minori1JapFilter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+  StringFilter(text, len, "\\a", 2);
+  StringFilter(text, len, "\\v", 2);
+  StringFilter(text, len, "\\N", 2);
+
+  if (cpp_strnstr(text, "{", *len)) {
+    StringFilterBetween(text, len, "{", 1, "}", 1);
+  }
+
+  return true;
+}
+
+bool InsertMinori1Hook() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/v19644
+    * https://vndb.org/v12562
+    */
+  const BYTE bytes[] = {
+    0x84, 0xC0,             // test al,al                      << hook here
+    0x0F, 0x85, XX4,        // jne trinoline_en_AA.exe+243E1
+    0x68, XX4,              // push trinoline_en_AA.exe+118BF8 << alt eng hook
+    0x33, 0xFF              // xor edi,edi
+  };
+  enum { alt_addr_offset = 8 };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:Minori1: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_edx_off -4;
+  hp.codepage = 932;
+  hp.type = USING_STRING;
+  hp.filter_fun = Minori1JapFilter;
+  ConsoleOutput("vnreng: INSERT Minori1");
+  NewHook(hp, "Minori1");
+
+  hp.address = addr + alt_addr_offset;
+  hp.codepage = 0;
+  hp.filter_fun = Minori1EngFilter;
+  ConsoleOutput("vnreng: INSERT Minori1eng");
+  NewHook(hp, "Minori1eng");
+
+  return true;
+}
+
+bool Minori2Filter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+  StringCharReplacer(text, len, "\\n", 2, ' ');
+
+  if (cpp_strnstr(text, "{", *len)) {
+    StringFilterBetween(text, len, "{", 1, "}", 1);
+  }
+
+  return true;
+}
+
+bool InsertMinori2Hook() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/v35
+    */
+  const BYTE bytes[] = {
+    0x80, 0x38, 0x00,              // cmp byte ptr [eax],00  << hook here
+    0x0F, 0x84, XX4,               // je WindRP.exe+2832A
+    0xB8, 0x20, 0x03, 0x00, 0x00,  // mov eax,00000320
+    0x89, 0x44, 0x24, 0x10,        // mov [esp+10],eax
+    0x89, 0x44, 0x24, 0x14,        // mov [esp+14],eax
+    0x8B, 0x47, 0x20               // mov eax,[edi+20]
+  };
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:Minori2: pattern not found");
+    return false;
+  }
+
+  ConsoleOutput("vnreng: INSERT Minori2");
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_eax_off -4;
+  hp.type = USING_STRING;
+  hp.filter_fun = Minori2Filter;
+  ConsoleOutput("vnreng: INSERT Minori2");
+  ConsoleOutput("vnreng:Minori2: Please, set text to max speed");
+  NewHook(hp, "Minori2");
+  return true;
+}
+
+bool InsertMinori3Hook() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/r10137
+    */
+  const BYTE bytes[] = {
+    0x0F, 0xB6, 0x08,              // movzx ecx,byte ptr [eax]  << hook here
+    0x3B, 0xCA                     // cmp ecx,edx
+  };
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:Minori3: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_eax_off -4;
+  hp.split = pusha_esp_off -4; 
+  hp.split_index = 0;
+  hp.length_offset = 1;
+  hp.codepage = 1252;
+  hp.type = NO_CONTEXT | USING_SPLIT | DATA_INDIRECT;
+  ConsoleOutput("vnreng: INSERT Minori3");
+  NewHook(hp, "Minori3");
+  return true;
+}
+
+bool InsertMinori4Hook() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/r10138
+    */
+  const BYTE bytes[] = {
+    0x68, XX4,                     // push ef_latter_en.exe+12EDB0  << hook here
+    0x33, 0xFF,                    // xor edi,edi
+    0x8D, 0xB5, XX4,               // lea esi,[ebp-00000090]
+    0xC7, 0x45, 0x84, XX4          // mov [ebp-7C],0000000F
+  };
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:Minori4: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_edx_off -4;
+  hp.split = pusha_esp_off -4; 
+  hp.split_index = 0;
+  hp.codepage = 1252;
+  hp.type = NO_CONTEXT | USING_STRING | USING_SPLIT;
+  ConsoleOutput("vnreng: INSERT Minori4");
+  NewHook(hp, "Minori4");
+  return true;
+}
+
+bool InsertMinoriHooks()
+{ 
+  bool ok = InsertMinori1Hook();
+  ok = InsertMinori2Hook() || ok;
+  ok = InsertMinori3Hook() || ok;
+  ok = InsertMinori4Hook() || ok;
+  return ok;
+}
+
+bool InsertDebonosuWorksHook() {
+	//by Blu3train
+	/*
+	* Sample games:
+	* https://vndb.org/v47955
+	*/
+	const BYTE bytes[] = {
+		0xCC,                       // int 3 
+		0x53,                       // push ebx      <- hook here
+		0x56,                       // push esi
+		0x57,                       // push edi
+		0x8B, 0xF9,                 // mov edi,ecx
+		0xC6, 0x05, XX4, 0x00       // mov byte ptr ["Kagura Genesis.exe"+DCB170],00
+	};
+	ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStopAddress);
+	if (!addr) {
+		ConsoleOutput("vnreng:DebonosuWorks: pattern not found");
+		return false;
+	}
+
+	HookParam hp = {};
+	hp.address = addr + 1;
+	hp.offset = pusha_eax_off -4;
+    hp.index = 0;
+	hp.type = USING_STRING;
+	ConsoleOutput("vnreng: INSERT DebonosuWorks");
+	NewHook(hp, "DebonosuWorks");
+
+	return true;
+}
+
+bool LucaSystemFilter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+
+  if ( text[0] == '\x81' && text[1] == '\x94')
+    return false;
+
+  StringCharReplacer(text, len, "\x81\x90", 2, ' '); // new line
+  //replacement from Flowers 4 config.json
+  CharReplacer(text, len, '\xA5', ' ');
+  CharReplacer(text, len, '\xA2', '<');
+  CharReplacer(text, len, '\xA3', '>');
+  CharReplacer(text, len, '\xA1', '\"');
+  CharReplacer(text, len, '\xA4', '\'');
+  CharReplacer(text, len, '\xA7', 'à');
+  CharReplacer(text, len, '\xA8', 'è');
+  CharReplacer(text, len, '\xA9', 'é');
+  CharReplacer(text, len, '\xAA', 'ë');
+  CharReplacer(text, len, '\xAB', 'ō');
+  CharReplacer(text, len, '\xB0', '-');
+  CharReplacer(text, len, '\xBB', ' ');
+  
+  while(cpp_strnstr(text, "  ", *len)) // Erasing all but one whitespace from strings
+    StringCharReplacer(text, len, "  ", 2, ' ');
+
+  if (text[0] == ' ')
+    ::memmove(text, text + 1, --*len);
+
+  return true;
+}
+
+bool InsertLucaSystemHook() {
+	//by Blu3train
+	/*
+	* Sample games:
+	* https://vndb.org/v15395
+	* https://vndb.org/v14267
+	* https://vndb.org/v18152
+	* https://vndb.org/r82704
+	*/
+	const BYTE bytes[] = {
+		0xCC,                       // int 3 
+		0xE9, XX4,                  // jmp d3d9.dll+1E420
+		0x56,                       // push esi
+		0x57,                       // push edi
+		0x8B, 0x7C, 0x24, 0x20,     // mov edi,[esp+20]
+		0x8B, 0xD8,                 // mov ebx,eax
+		0x8B, 0x07                  // mov eax,[edi]
+	};
+	const BYTE bytes2[] = {
+		0xCC,                       // int 3 
+		0x83, 0xEC, 0x0C,           // sub esp,0C      <- hook here
+		0x53,                       // push ebx
+		0x55,                       // push ebp
+		0x56                        // push esi
+	};
+
+	HMODULE module = GetModuleHandleW(L"Script.dll");
+	auto [minAddress, maxAddress] = Util::QueryModuleLimits(module);
+	ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), minAddress, maxAddress);
+	if (!addr) {
+		addr = MemDbg::findBytes(bytes2, sizeof(bytes2), minAddress, maxAddress);
+		if (!addr) {
+			ConsoleOutput("vnreng:LucaSystem: pattern not found");
+			return false;
+		}
+	}
+
+	HookParam hp = {};
+	hp.address = addr + 1;
+	hp.offset = 0x01 * 4; //arg 1
+	hp.index = 0;
+	hp.padding = 0x04;
+	hp.type = USING_STRING;
+	hp.filter_fun = LucaSystemFilter;
+	ConsoleOutput("vnreng: INSERT LucaSystem");
+	NewHook(hp, "LucaSystem");
+
+	return true;
+}
+
+bool KogadoFilter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+
+  text[(*len)++] = ' ';
+
+  return true;
+}
+
+bool InsertKogadoHook() {
+	//by Blu3train
+	/*
+	* Sample games:
+	* https://vndb.org/r12750
+	*/
+	const BYTE bytes[] = {
+		0x8B, 0xC7,                 // mov eax,edi      <- hook here
+		0xF3, 0xA5,                 // repe movsd 
+		0x8B, 0xCA,                 // mov ecx,edx
+		0x83, 0xE1, 0x03,           // and ecx,03
+		0xF3, 0xA4,                 // repe movsb 
+		0x5F,                       // pop edi
+		0x5E                        // pop esi
+	};
+
+	ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+	ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+	if (!addr) {
+		ConsoleOutput("vnreng:Kogado: pattern not found");
+		return false;
+	}
+
+	HookParam hp = {};
+	hp.address = addr;
+	hp.offset = pusha_esi_off -4;
+    hp.index = 0;
+	hp.type = USING_UTF8 | USING_STRING | NO_CONTEXT;
+	hp.filter_fun = KogadoFilter;
+	ConsoleOutput("vnreng: INSERT Kogado");
+	NewHook(hp, "Kogado");
+
+	return true;
+}
+
+bool SysdFilter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+
+  if (text[0] == '\x81' && text[1] == '\x40') {
+    *len -= 2;
+    ::memmove(text, text + 2, *len);
+  }
+  while (text[*len-1] == '\n') {
+    (*len)--;
+    text[*len] = '\0';
+  }
+
+  return true;
+}
+
+bool InsertSysdHook() {
+	//by Blu3train
+	/*
+	* Sample games:
+	* https://vndb.org/v2069
+	*/
+	const BYTE bytes[] = {
+		0xC1, 0xE9, 0x02,              // shr ecx,02      <- hook here
+		0xF3, 0xA5,                    // repe movsd 
+		0x8B, 0xCA,                    // mov ecx,edx
+		0x83, 0xE1, 0x03,              // and ecx,03
+		0xF3, 0xA4,                    // repe movsb 
+		0x5F,                          // pop edi
+		0xB8, 0x01, 0x00, 0x00, 0x00   // mov eax,00000001
+	};
+
+	ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+	ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+	if (!addr) {
+		ConsoleOutput("vnreng:Sysd: pattern not found");
+		return false;
+	}
+
+	HookParam hp = {};
+	hp.address = addr;
+	hp.offset = pusha_esi_off -4;
+    hp.index = 0;
+    hp.padding = 0x12;
+	hp.split = 0x2 * 4; //arg 2
+	hp.split_index = 0;
+	hp.type = USING_STRING | NO_CONTEXT | USING_SPLIT;
+	hp.filter_fun = SysdFilter;
+	ConsoleOutput("vnreng: INSERT Sysd");
+	NewHook(hp, "Sysd");
+
+	return true;
+}
+
+bool InsertKissHook() {
+	//by Blu3train
+	/*
+	* Sample games:
+	* https://vndb.org/v1767
+	*/
+	const BYTE bytes[] = {
+		0xC1, 0xE9, 0x02,              // shr ecx,02      <- hook here
+		0xF3, 0xA5,                    // repe movsd 
+		0x8B, 0xCA,                    // mov ecx,edx
+		0x55,                          // push ebp
+		0x83, 0xE1, 0x03,              // and ecx,03
+		0xF3, 0xA4,                    // repe movsb 
+		0x8D, 0x4C, 0x24, 0x18,        // lea ecx,[esp+18]
+		0xE8, XX4,                     // call kano.exe+6310
+		0x8B, 0x0D, XX4                // mov ecx,[kano.exe+211F8C]
+	};
+
+	ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+	ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+	if (!addr) {
+		ConsoleOutput("vnreng:Kiss: pattern not found");
+		return false;
+	}
+
+	HookParam hp = {};
+	hp.address = addr;
+	hp.offset = pusha_esi_off -4;
+    hp.index = 0;
+	hp.type = USING_STRING | NO_CONTEXT;
+	ConsoleOutput("vnreng: INSERT Kiss");
+	NewHook(hp, "Kiss");
+
+	return true;
+}
+
+bool KidFilter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+  static std::string prevText;
+
+  if (LPSTR endText=cpp_strnstr(text, "\x02\x03", *len)) {
+    *endText = '\0';
+    *len = endText - text;
+  }
+  CharReplacer(text, len, '\x01', ' ');
+  StringReplacer(text, len, "\x87\x4c", 2, "--", 2);
+
+  if (prevText.find(text, 0, *len) != std::string::npos) // Check if the string is present in the previous one
+    return false;
+  prevText.assign(text, *len);
+
+  return true;
+}
+
+bool InsertKidHook() {
+	//by Blu3train
+	/*
+	* Sample games:
+	* https://vndb.org/r60521
+	*/
+	const BYTE bytes[] = {
+		0xBF, 0x01, 0x00, 0x00, 0x00,   // mov edi,00000001       <- hook here
+		0x8A, 0x08,                     // mov cl,[eax]
+		0x40,                           // inc eax
+		0xF6, 0xC1, 0x80                // test cl,-80
+	};
+
+	ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+	ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+	if (!addr) {
+		ConsoleOutput("vnreng:Kid: pattern not found");
+		return false;
+	}
+
+	HookParam hp = {};
+	hp.address = addr;
+	hp.offset = pusha_eax_off -4;
+    hp.index = 0;
+	hp.type = USING_STRING;
+	hp.filter_fun = KidFilter;
+	ConsoleOutput("vnreng: INSERT Kid");
+	NewHook(hp, "Kid");
+
+	return true;
+}
+
+bool ISMscriptFilter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPWSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+  
+  // Remove flashing cursor
+  if ( *text == L'\x4081' || *text == L'\xa481'  || *text == L'\xa581' || *text == L'\x9e81'  ||
+       *text == L'\xe681' || *text == L'\xe781'  || *text == L'\xe881')
+    return false;
+
+  return true;
+}
+
+bool InsertISMscript1Hook() {
+	//by Blu3train
+	/*
+	* Sample games:
+	* https://vndb.org/v973
+	*/
+	const BYTE bytes[] = {
+		0xCC,                    // int 3 
+		0x55,                    // push ebp        <- hook here
+		0x56,                    // push esi
+		0x8B, 0xF1,              // mov esi,ecx
+		0x8B, 0xAE, XX4,         // mov ebp,[esi+0000025C]
+		0x39, 0x2D, XX4          // cmp [ism.dll+BE2C4],ebp
+	};
+
+	HMODULE module = GetModuleHandleW(L"ism.dll");
+	auto [minAddress, maxAddress] = Util::QueryModuleLimits(module);
+	ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), minAddress, maxAddress);
+	if (!addr)
+		return false;
+
+	HookParam hp = {};
+	hp.address = addr + 1;
+	hp.offset = pusha_eax_off -4;
+    hp.index = 0;
+	hp.length_offset = 1;
+	hp.type = BIG_ENDIAN | NO_CONTEXT;
+	hp.filter_fun = ISMscriptFilter;
+
+	ConsoleOutput("vnreng: INSERT ISM-script1");
+	NewHook(hp, "ISM-script1");
+
+	return true;
+}
+
+bool InsertISMscript2Hook() {
+	//by Blu3train
+	/*
+	* Sample games:
+	* https://vndb.org/v3896
+	*/
+	const BYTE bytes[] = {
+		0x0B, 0xC1,                      // or eax,ecx
+		0x52,                            // push edx
+		0x50,                            // push eax
+		0x8B, 0xCE                       // mov ecx,esi        <- hook here
+	};
+	enum { addr_offset = sizeof(bytes) - 2 };
+
+	HMODULE module = GetModuleHandleW(L"ism.dll");
+	auto [minAddress, maxAddress] = Util::QueryModuleLimits(module);
+	ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), minAddress, maxAddress);
+	if (!addr)
+		return false;
+
+	HookParam hp = {};
+	hp.address = addr + addr_offset;
+	hp.offset = pusha_eax_off -4;
+    hp.index = 0;
+	hp.length_offset = 1;
+	hp.split = 0x14 * 4; //arg 14
+	hp.split_index = 0;
+	hp.type = BIG_ENDIAN | NO_CONTEXT | USING_SPLIT;
+	hp.filter_fun = ISMscriptFilter;
+
+	ConsoleOutput("vnreng: INSERT ISM-script2");
+	NewHook(hp, "ISM-script2");
+
+	return true;
+}
+
+bool InsertISMscript3Hook() {
+	//by Blu3train
+	/*
+	* Sample games:
+	* https://vndb.org/r1135
+	*/
+	const BYTE bytes[] = {
+		0xCC,                    // int 3 
+		0xA1, XX4,               // mov eax,[ISM.DLL+BDAD4]        <- hook here
+		0x57,                    // push edi
+		0x8B, 0x3D, XX4          // mov edi,[ISM.DLL+E8658]
+	};
+
+	HMODULE module = GetModuleHandleW(L"ism.dll");
+	auto [minAddress, maxAddress] = Util::QueryModuleLimits(module);
+	ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), minAddress, maxAddress);
+	if (!addr)
+		return false;
+
+	HookParam hp = {};
+	hp.address = addr + 1;
+	hp.offset = pusha_eax_off -4;
+    hp.index = 0;
+	hp.length_offset = 1;
+	hp.type = BIG_ENDIAN | NO_CONTEXT;
+	hp.filter_fun = ISMscriptFilter;
+
+	ConsoleOutput("vnreng: INSERT ISM-script3");
+	NewHook(hp, "ISM-script3");
+
+	return true;
+}
+
+bool InsertISMscriptHooks()
+{ 
+  bool ok = InsertISMscript1Hook();
+  ok = InsertISMscript2Hook() || ok;
+  ok = InsertISMscript3Hook() || ok;
+  return ok;
+}
+
+bool NitroplusSysFilter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+
+  if (*len <= 2) return false;
+
+  StringFilter(text, len, "\x81@", 2);
+  CharReplacer(text, len, '\r', ' ');
+  if (cpp_strnstr(text, "<", *len)) {
+    StringFilterBetween(text, len, "<", 1, ">", 1);
+  }
+  while (*len>1 && ::isspace(*text)) {
+    ::memmove(text, text+1, --(*len));
+  }
+
+  return true;
+}
+
+bool InsertNitroplusSysHook() {
+	//by Blu3train
+	/*
+	* Sample games:
+	* https://vndb.org/r76679
+	*/
+	const BYTE bytes[] = {
+		0x0F, 0x84, XX4,            // je system.dll+5B8CA        <- hook here
+		0xEB, 0x04,                 // jmp system.dll+5A791
+		0x8B, 0x44, 0x24, 0x20,     // mov eax,[esp+20]
+		0x8B, 0x4C, 0x24, 0x24      // mov ecx,[esp+24]
+	};
+
+	HMODULE module = GetModuleHandleW(L"system.dll");
+	auto [minAddress, maxAddress] = Util::QueryModuleLimits(module);
+	ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), minAddress, maxAddress);
+	if (!addr)
+		return false;
+
+	HookParam hp = {};
+	hp.address = addr;
+	hp.offset = pusha_eax_off -4;
+    hp.index = 0;
+	hp.type = USING_STRING;
+	hp.filter_fun = NitroplusSysFilter;
+	ConsoleOutput("vnreng: INSERT NitroplusSystem");
+	NewHook(hp, "NitroplusSystem");
+
+	return true;
+}
+
+bool InsertTrianglePixHook() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/v38070
+    * https://vndb.org/v42090
+    * https://vndb.org/v41025
+    */
+  const BYTE bytes[] = {
+    0x50,                      // push eax           << hook here
+    0xE8, XX4,                 // call FinalIgnition.exe+4DE10
+    0x8B, 0x83, XX4,           // mov eax,[ebx+0000DCA0]
+    0x8D, 0x8D, XX4,           // lea ecx,[ebp-0000022C]
+    0x83, 0x7D, 0x44, 0x10,    // cmp dword ptr [ebp+44],10
+    0xFF, 0x75, 0x40           // push [ebp+40]
+  };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:TrianglePix: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_eax_off -4;
+  hp.index = 0;
+  hp.type = USING_UTF8 | USING_STRING | NO_CONTEXT;
+  hp.filter_fun = NewLineCharToSpaceFilter;
+  ConsoleOutput("vnreng: INSERT TrianglePix");
+  NewHook(hp, "TrianglePix");
+  return true;
+}
+
+bool InsertSekaiProject1Hook() 
+{
+  //by Blu3train
+  /*
+  * Sample games:
+  * https://vndb.org/v1193
+  */
+  const BYTE bytes[] = {
+    0xCC,                    // int 3 
+    0x83, 0xEC, 0x10,        // sub esp,10    << hook here
+    0x8B, 0x44, 0x24, 0x14,  // mov eax,[esp+14]
+    0x53,                    // push ebx
+    0x56,                    // push esi
+    0x50,                    // push eax
+    0x8B, 0xD9               // mov ebx,ecx
+  };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:SekaiProject1: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr + 1;
+  hp.offset = 0x4 * 1; //arg1
+  hp.index = 0;
+  hp.type = USING_UNICODE | USING_STRING | NO_CONTEXT;
+  ConsoleOutput("vnreng: INSERT SekaiProject1");
+  NewHook(hp, "SekaiProject1");
+  return true;
+}
+
+bool InsertSekaiProject2Hook() 
+{
+  //by Blu3train
+  /*
+  * Sample games:
+  * https://vndb.org/r21174
+  */
+  const BYTE bytes[] = {
+    0xC7, 0x45, 0xDC, 0x00, 0x00, 0x00, 0x00,   // mov [ebp-24],00000000        << hook here
+    0xEB, 0x09,                                 // jmp "SCHOOLDAYS HQ.exe"+4C821
+    0x8B, 0x45, 0xDC,                           // mov eax,[ebp-24]
+    0x83, 0xC0, 0x01,                           // add eax,01
+    0x89, 0x45, 0xDC                            // mov [ebp-24],eax
+  };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:SekaiProject2: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = 0x4 * 21; //arg21
+  hp.index = 0;
+  hp.type = USING_UNICODE | USING_STRING | NO_CONTEXT;
+  ConsoleOutput("vnreng: INSERT SekaiProject2");
+  NewHook(hp, "SekaiProject2");
+  return true;
+}
+
+bool InsertSekaiProject3Hook() 
+{
+  //by Blu3train
+  /*
+  * Sample games:
+  * https://vndb.org/r39989
+  */
+  const BYTE bytes[] = {
+    0xCC,                    // int 3 
+    0x8B, 0x44, 0x24, 0x04,  // mov eax,[esp+04]     << hook here
+    0x83, 0xEC, 0x14,        // sub esp,14
+    0x55,                    // push ebp
+    0x56,                    // push esi
+    0x57,                    // push edi
+    0x8B, 0xF9               // mov edi,ecx
+  };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:SekaiProject3: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr + 1;
+  hp.offset = 0x4 * 1; //arg1
+  hp.index = 0;
+  hp.type = USING_UNICODE | USING_STRING | NO_CONTEXT;
+  ConsoleOutput("vnreng: INSERT SekaiProject3");
+  NewHook(hp, "SekaiProject3");
+  return true;
+}
+
+bool InsertSekaiProjectHooks()
+{ return InsertSekaiProject1Hook() || InsertSekaiProject2Hook() || InsertSekaiProject3Hook();}
+
+bool AquaplusFilter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+
+  CharReplacer(text, len, '^', '\"');
+  StringCharReplacer(text, len, "\\n", 2, ' ');
+  StringFilter(text, len, "\\k", 2);
+  StringFilter(text, len, "\\p", 2);
+  if (cpp_strnstr(text, "<R", *len)) {  // ex. <R華奢|きゃしゃ>
+    StringFilter(text, len, "<R", 2);
+    StringFilterBetween(text, len, "|", 1, ">", 1);
+  }
+  StringFilter(text, len, "<c", 3); // remove "<c" followed by 1 char
+  CharFilter(text, len, '>');
+
+  if (*len == 0) return false;
+
+  return true;
+}
+
+bool InsertAquaplus1Hook() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/r20439
+    */
+  const BYTE bytes[] = {
+    0xCC,                         // int 3 
+    0x53,                         // push ebx             << hook here
+    0x8B, 0x5C, 0x24, 0x0C,       // mov ebx,[esp+0C]
+    0x55,                         // push ebp
+    0x8B, 0x6C, 0x24, 0x0C,       // mov ebp,[esp+0C]
+    0x56,                         // push esi
+    0x57,                         // push edi
+    0x8B, 0x7D, 0x24,             // mov edi,[ebp+24]
+    0x85, 0xFF                    // test edi,edi
+  };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:Aquaplus1: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr + 1;
+  hp.offset = 0x4 * 2; //arg2
+  hp.index = 0;
+  hp.type = USING_STRING;
+  hp.filter_fun = AquaplusFilter;
+  ConsoleOutput("vnreng: INSERT Aquaplus1");
+  NewHook(hp, "Aquaplus1");
+  return true;
+}
+
+bool InsertAquaplus2Hook() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/r108249
+    */
+  const BYTE bytes[] = {
+    0xC6, 0x04, 0x30 , 0x00,      // mov byte ptr [eax+esi],00           << hook here
+    0x8B, 0xF2,                   // mov esi,edx
+    0x8A, 0x02,                   // mov al,[edx]
+    0x42,                         // inc edx
+    0x84, 0xC0,                   // test al,al
+    0x75, 0xF9                    // jne "WHITE ALBUM Memories like Falling Snow.exe"+85253
+  };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:Aquaplus2: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_ebx_off -4;
+  hp.index = 0;
+  hp.split = pusha_esp_off -4;
+  hp.split_index = 0;
+  hp.type = USING_STRING | NO_CONTEXT | USING_SPLIT;
+  hp.filter_fun = AquaplusFilter;
+  ConsoleOutput("vnreng: INSERT Aquaplus2");
+  NewHook(hp, "Aquaplus2");
+  return true;
+}
+
+bool InsertAquaplus3Hook() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * Dungeon Travelers 2: The Royal Library & the Monster Seal
+    */
+  const BYTE bytes[] = {
+    0xCC,                       // int 3 
+    0x80, 0x3D, XX4, 0x00,      // cmp byte ptr [DT2_en.exe+3052EC],00    << hook here
+    0x75, 0x67,                 // jne DT2_en.exe+89DC0
+    0x56,                       // push esi
+    0xBA, XX4                   // mov edx,DT2_en.exe+3051E0
+  };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:Aquaplus3: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr + 1;
+  hp.offset = pusha_eax_off -4;
+  hp.index = 0;
+  hp.type = USING_UTF8 | USING_STRING | NO_CONTEXT;
+  hp.filter_fun = NewLineCharToSpaceFilter;
+  ConsoleOutput("vnreng: INSERT Aquaplus3");
+  NewHook(hp, "Aquaplus3");
+  return true;
+}
+
+bool InsertAquaplusHooks()
+{ return InsertAquaplus1Hook() || InsertAquaplus2Hook() || InsertAquaplus3Hook();}
+
+bool InsertOtomeHook() 
+{
+  //by Blu3train
+  /*
+  * Sample games:
+  * https://vndb.org/r57599
+  * https://vndb.org/r57600
+  * https://vndb.org/r57601
+  */
+  const BYTE bytes[] = {
+    0x33, 0xFF,                   // xor edi,edi         << hook here
+    0x66, 0x39, 0x3B,             // cmp [ebx],di
+    0x74, 0x2E,                   // je JyakounoLylaVol3.exe+9E8F2
+    0x8B, 0xD3,                   // mov edx,ebx
+    0xEB, 0x08                    // jmp JyakounoLylaVol3.exe+9E8D0
+  };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:Otome: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_ebx_off -4;
+  hp.index = 0;
+  hp.filter_fun = [](LPVOID data, DWORD* len, HookParam*, BYTE)
+  {
+    WideCharReplacer((wchar_t*)data, reinterpret_cast<size_t *>(len), L'\n', L' ');
+    return true;
+  };
+
+  hp.type = USING_UNICODE | USING_STRING | NO_CONTEXT;
+  ConsoleOutput("vnreng: INSERT Otome");
+  NewHook(hp, "Otome");
+  return true;
+}
+
+bool BishopFilter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPWSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+
+  WideStringCharReplacer(text, len, L"\\n", 2, L' ');
+  WideStringFilter(text, len, L"\\", 2); // remove \ followed by 1 char
+  WideCharFilter(text, len, L'\xE000');  // heart symbol
+
+  return true;
+}
+
+bool InsertBishopHook() 
+{
+  //by Blu3train
+  /*
+  * Sample games:
+  * https://vndb.org/r49553
+  * https://vndb.org/v38604
+  * https://vndb.org/v16953
+  * https://vndb.org/v33842
+  * https://vndb.org/v29168
+  * https://vndb.org/v22697
+  * https://vndb.org/v27492
+  * https://vndb.org/v26206
+  * https://vndb.org/v21769
+  * https://vndb.org/v24825
+  * https://vndb.org/v31037
+  * https://vndb.org/v20734
+  * https://vndb.org/v19583
+  * https://vndb.org/v18591
+  * https://vndb.org/v16104
+  */
+  const BYTE bytes[] = {
+    0xDD, 0x9E, XX4,              // fstp qword ptr [esi+000001C8]
+    0xC7, 0x86, XX4, XX4,         // mov [esi+000001C0],00000000
+    0xE8, XX4,                    // call smie.exe+3170
+    0x5F,                         // pop edi
+    0x5B,                         // pop ebx
+    0x8B, 0xE5                    // mov esp,ebp          << hook here
+  };
+  enum { addr_offset = sizeof(bytes) - 2 };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:Bishop: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr + addr_offset;
+  hp.offset = pusha_ebx_off -4;
+  hp.index = 0;
+  hp.split = pusha_esp_off -4;
+  hp.split_index = 0;
+  hp.type = USING_UNICODE | USING_STRING | NO_CONTEXT | USING_SPLIT;
+  hp.filter_fun = BishopFilter;
+  ConsoleOutput("vnreng: INSERT Bishop");
+  NewHook(hp, "Bishop");
+  return true;
+}
+
+bool YaneSDKFilter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPWSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+  static std::wstring prevText;
+
+  if (!*len)
+    return false;
+  text[*len/sizeof(wchar_t)] = L'\0';  // clean text
+
+  if (!prevText.compare(text))
+    return false;
+  prevText = text;
+
+  WideStringCharReplacer(text, len, L"[r]", 3, L' ');
+  WideStringFilter(text, len, L"[np]", 4);
+
+  if (cpp_wcsnstr(text, L"'", *len/sizeof(wchar_t))) { // [桜木'さくらぎ]
+    WideStringFilterBetween(text, len, L"'", 1, L"]", 1);
+  }
+  WideCharFilter(text, len, L'[');
+  WideCharFilter(text, len, L']');
+
+  return true;
+}
+
+bool InsertYaneSDKHook() 
+{
+  //by Blu3train
+  /*
+  * Sample games:
+  * https://vndb.org/v21734
+  * https://vndb.org/v21455
+  * https://vndb.org/v20406
+  */
+  const BYTE bytes[] = {
+    0x83, 0xF9, 0x08,             // cmp ecx,08         << hook here
+    0x8D, 0x45, 0x0C,             // lea eax,[ebp+0C]
+    0x8D, 0x4D, 0xBC,             // lea ecx,[ebp-44]
+    0x0F, 0x43, 0xC2,             // cmovae eax,edx
+    0x0F, 0xB7, 0x04, 0x70        // movzx eax,word ptr [eax+esi*2]
+  };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:YaneSDK: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_eax_off -4;
+  hp.index = 0;
+  hp.filter_fun = YaneSDKFilter;
+  hp.type = USING_UNICODE | USING_STRING | NO_CONTEXT;
+  ConsoleOutput("vnreng: INSERT YaneSDK");
+  NewHook(hp, "YaneSDK");
+  return true;
+}
+
+bool CielFilter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+
+  if (*len == 1) return false;
+
+  return true;
+}
+
+bool InsertCiel1Hook() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/r26480
+    * https://vndb.org/v1648
+    * https://vndb.org/v10392
+    */
+  const BYTE bytes[] = {
+    0x50,                         // push eax               << hook here
+    0xE8, XX4,                    // call FaultA.exe+81032
+    0x83, 0xC4, 0x04,             // add esp,04
+    0x85, 0xC0,                   // test eax,eax
+    0x74, 0x32,                   // je FaultA.exe+41FA6
+    0x81, 0x7C, 0x24, 0x10, XX4   // cmp [esp+10],000003FE
+  };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:Ciel1: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_edi_off -4;
+  hp.index = 0;
+  hp.length_offset = 1;
+  hp.type = DATA_INDIRECT;
+  hp.filter_fun = CielFilter;
+  ConsoleOutput("vnreng: INSERT Ciel1");
+  NewHook(hp, "Ciel1");
+  return true;
+}
+
+bool InsertCiel2Hook() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/r5101
+    */
+  const BYTE bytes[] = {
+    0x68, XX4,               // push after.exe+94518     << hook here
+    0x50,                    // push eax
+    0xE8, XX4,               // call after.exe+711F0
+    0x83, 0xC4, 0x0C,        // add esp,0C
+    0x85, 0xC0,              // test eax,eax
+    0x0F, 0x85, XX4,         // jne after.exe+A2E4
+    0x8B, 0x93, XX4          // mov edx,[ebx+000BE000]
+  };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:Ciel2: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_eax_off -4;
+  hp.index = 0;
+  hp.length_offset = 1;
+  hp.type = DATA_INDIRECT;
+  ConsoleOutput("vnreng: INSERT Ciel2");
+  NewHook(hp, "Ciel2");
+  return true;
+}
+
+bool InsertCielHooks()
+{ return InsertCiel1Hook() || InsertCiel2Hook();}
+
+bool InsertA98sysHook() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/v2477
+    */
+  const BYTE bytes[] = {
+    0x56,                    // push esi                   << hook here
+    0xE8, XX4,               // call HEARTWORK.EXE+134F0
+    0x83, 0xC4, 0x38,        // add esp,38
+    0x5F,                    // pop edi
+    0x5D,                    // pop ebp
+    0x5B,                    // pop ebx
+    0xE8, XX4                // call HEARTWORK.EXE+1AF80
+  };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:A98sys: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_ecx_off -4;
+  hp.index = 0;
+  hp.type = USING_STRING;
+  ConsoleOutput("vnreng: INSERT A98sys");
+  NewHook(hp, "A98sys");
+  return true;
+}
+
+bool Ages7Filter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPWSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+
+  WideCharFilter(text, len, L'\x3000');	//IDSP
+  WideCharFilter(text, len, L'\x0001');
+  WideCharFilter(text, len, L'\x0002');
+  WideCharFilter(text, len, L'\x0003');
+  WideCharReplacer(text, len, 0x000A, L' ');
+
+  return true;
+}
+
+bool InsertAges7Hook()
+{
+  //by Blu3train
+  /*
+  * Sample games:
+  * https://vndb.org/v93
+  * https://vndb.org/v92
+  * https://vndb.org/r38978
+  */
+  const BYTE bytes[] = {
+    0x55,                   // 55                       | push ebp                                |
+    0x8B, 0xEC,             // 8BEC                     | mov ebp,esp                             |
+    0x6A, 0xFF,             // 6A FF                    | push -01                                |
+    0x68, XX4,              // 68 XX4                   | push exe+1FF8E2                         |
+    0x64, 0xA1, 0x00, 0x00, 0x00, 0x00, //64 A1 00000000| mov eax,fs:[00000000]                   |
+    0x50,                   // 50                       | push eax                                |
+    0x83, 0xEC, XX,         // 83 EC 34                 | sub esp,34                              |
+    0x53,                   // 53                       | push ebx                                |
+    0x56,                   // 56                       | push esi                                |
+    0x57,                   // 57                       | push edi                                |
+    0xA1, XX4,              // A1 XX4                   | mov eax,[exe+260014]                    |
+    0x33, 0xC5,             // 33 C5                    | xor eax,ebp                             |
+    0x50,                   // 50                       | push eax                                |
+    0x8D, 0x45, 0xF4,       // 8D 45 F4                 | lea eax,[ebp-0C]                        |
+    0x64, 0xA3, 0x00, 0x00, 0x00, 0x00, //64 A3 00000000| mov fs:[00000000],eax                   |
+    0x8B, 0xF9,             // 8B F9                    | mov edi,ecx                             |
+    0x83, 0x7D, 0x0C, 0x00  // 83 7D 0C 00              | cmp dword ptr [ebp+0C],00               |
+  };
+	bool ok = false;
+
+	auto addrs = Util::SearchMemory(bytes, sizeof(bytes), PAGE_EXECUTE, processStartAddress, processStopAddress);
+	for(auto addr : addrs){ 
+		HookParam hp = {};
+		hp.address = addr;
+		hp.offset = 0xC;
+		hp.type = USING_UNICODE | USING_STRING | USING_SPLIT;
+		hp.split = 0x4;
+		hp.filter_fun = Ages7Filter;
+		NewHook(hp, "Ages7");
+		ok = true;
+	}
+	if (!ok)
+		ConsoleOutput("vnreng: Ages7: pattern not found");
+	return ok;
+}
+
+bool CodeXFilter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+
+  StringCharReplacer(text, len, "^n", 2, ' ');
+
+  return true;
+}
+
+bool InsertCodeXHook() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/v41664
+    * https://vndb.org/v36122
+    */
+  const BYTE bytes[] = {
+    0x83, 0xC4, 0x08,           // add esp,08                  << hook here
+    0x8D, 0x85, XX4,            // lea eax,[ebp-00000218]
+    0x50,                       // push eax
+    0x68, XX4,                  // push ???????????!.exe+10A76C
+    0x85, 0xF6,                 // test esi,esi
+    0x74, 0x4F,                 // je ???????????!.exe+2A95B
+    0xFF, 0x15, XX4,            // call dword ptr [???????????!.exe+C8140]
+    0x8B, 0x85, XX4             // mov eax,[ebp-00000220]      << alternative hook here
+  };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:CodeX: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr;
+  hp.offset = pusha_eax_off -4;
+  hp.index = 0;
+  hp.type = USING_STRING;
+  hp.filter_fun = CodeXFilter;
+  ConsoleOutput("vnreng: INSERT CodeX");
+  NewHook(hp, "CodeX");
+  return true;
+}
+
+bool DxLibFilter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+
+  StringCharReplacer(text, len, "%N", 2, ' ');
+  StringFilter(text, len, "%K", 2);
+  StringFilter(text, len, "%P", 2);
+
+  return true;
+}
+
+bool InsertDxLibHook() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/v7849
+    * https://vndb.org/v10231
+    */
+  const BYTE bytes[] = {
+    0xF7, 0xC6, XX4,            // test esi,00000003      << hook here
+    0x75, XX,                   // jne BookofShadows.exe+15FE54
+    0x8B, 0xD9,                 // mov ebx,ecx
+    0xC1, 0xE9, 0x02,           // shr ecx,02
+    0x75, XX,                   // jne BookofShadows.exe+15FEAE
+    0xEB, XX                    // jmp BookofShadows.exe+15FE76
+  };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:DxLib: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr;
+  //hp.offset = pusha_edx_off -4;
+  hp.offset = pusha_esi_off -4;
+  hp.index = 0;
+  hp.type = USING_STRING;
+  hp.filter_fun = DxLibFilter;
+  ConsoleOutput("vnreng: INSERT DxLib");
+  NewHook(hp, "DxLib");
+  return true;
+}
+
+bool KaleidoFilter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+
+  // Unofficial eng TL with garbage newline spaces
+  StringCharReplacer(text, len, " \\n ", 4, ' ');
+  StringCharReplacer(text, len, " \\n", 3, ' ');
+  StringCharReplacer(text, len, "\\n", 2, ' ');
+  
+  return true;
+}
+
+bool InsertKaleidoHook() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/v29889
+    * https://vndb.org/r56675
+    */
+  const BYTE bytes[] = {
+    0xFF, 0x75, 0xD4,              // push [ebp-2C]
+    0xE8, XX4,                     // call 5toubun.exe+1DD0
+    0x83, 0xC4, 0x0C,              // add esp,0C
+    0x8A, 0xC3,                    // mov al,bl
+    0x8B, 0x4D, 0xF4,              // mov ecx,[ebp-0C]
+    0x64, 0x89, 0x0D, XX4,         // mov fs:[00000000],ecx
+    0x59                           // pop ecx          << hook here
+  };
+  enum { addr_offset = sizeof(bytes) - 1 };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:Kaleido: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr + addr_offset;
+  hp.offset = pusha_esi_off -4;
+  hp.index = 0;
+  hp.split = 0x0C;
+  hp.split_index = 0;
+  hp.type = USING_UTF8 | USING_STRING | USING_SPLIT ;
+  hp.filter_fun = KaleidoFilter;
+  ConsoleOutput("vnreng: INSERT Kaleido");
+  NewHook(hp, "Kaleido");
+  return true;
+}
+
+bool GameMakerFilter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  CharFilter(reinterpret_cast<LPSTR>(data), reinterpret_cast<size_t*>(size), '#');
+  return true;
+}
+
+bool InsertGameMakerHook() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    *   VA-11 Hall A
+    */
+  const BYTE bytes[] = {
+    0x85, 0xF6,                 // test esi,esi
+    0x74, XX,                   // je "VA-11 Hall A.exe"+D5014
+    0x85, 0xC0,                 // test eax,eax
+    0x74, XX,                   // je "VA-11 Hall A.exe"+D5014
+    0x50,                       // push eax
+    0x56                        // push esi          << hook here
+  };
+  enum { addr_offset = sizeof(bytes) - 1 };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:GameMaker: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr + addr_offset;
+  hp.offset = pusha_eax_off -4;
+  hp.index = 0;
+  hp.type = USING_STRING | NO_CONTEXT;
+  hp.filter_fun = GameMakerFilter;
+  ConsoleOutput("vnreng: INSERT GameMaker");
+  NewHook(hp, "GameMaker");
+  ConsoleOutput("vnreng:GameMaker: use regex filter .+\\]");
+  return true;
+}
+
+bool InsertRpgmXPHook()
+{
+  //by Blu3train
+  /*
+  * Sample games:
+  * セントヘレナ(RJ137364)
+  */
+  HookParam hp = {};
+  wcsncpy_s(hp.module, L"gdi32.dll", MAX_MODULE_SIZE - 1);
+  strncpy_s(hp.function, "GetGlyphOutlineW", MAX_MODULE_SIZE - 1);
+  hp.address = 0;
+  hp.offset = 0x8; //arg2
+  hp.index = 0;
+  hp.split = pusha_esi_off - 4;
+  hp.split_index = 0;
+  hp.type = USING_UNICODE | USING_SPLIT | MODULE_OFFSET | FUNCTION_OFFSET;
+  hp.length_offset = 1;
+  ConsoleOutput("vnreng: INSERT RpgmXP");
+  NewHook(hp, "RpgmXP");
+  return true;
+}
+
+bool DmmFilter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+  StringCharReplacer(text, len, "\\n", 2, ' ');
+  StringCharReplacer(text, len, "\\k", 2, ' ');
+
+  if (cpp_strnstr(text, "{", *len)) {
+    StringFilterBetween(text, len, "{", 1, "}", 1);
+  }
+  return true;
+}
+
+bool InsertDmm1Hook()
+{
+    //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/r76933
+    * https://vndb.org/v18717
+    */
+    bool found = false;
+    const BYTE pattern[] = {
+        0x8A, 0x02,
+        0x42,
+        0x84, 0xC0,
+        0x75, 0xF9,
+        0x2B, 0xD6,
+        0x8D, 0xBB, XX4,
+        0x8A, 0x47, 0x01,
+        0x47,
+        0x84, 0xC0,
+        0x75, 0xF8,
+        0x8B, 0xCA,
+        0xC1, 0xE9, 0x02,	// <--
+        0xF3, 0xA5,
+        0x8B, 0xCA
+    };
+  enum { addr_offset = 25 };
+
+    for (auto addr : Util::SearchMemory(pattern, sizeof(pattern), PAGE_EXECUTE, processStartAddress, processStopAddress))
+    {
+        HookParam hp = {};
+        hp.address = addr+addr_offset;
+        hp.offset = pusha_esi_off - 4;
+        hp.codepage = 65001;
+        hp.type = USING_STRING | NO_CONTEXT;
+		hp.filter_fun = DmmFilter;
+        ConsoleOutput("Textractor: INSERT DMM1");
+        NewHook(hp, "DMM1");
+        found = true;
+    }
+    if (!found) ConsoleOutput("Textractor:DMM1: pattern not found");
+    return found;
+}
+
+bool InsertDmm2Hook()
+{
+    //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/r76933
+    */
+    bool found = false;
+    const BYTE pattern[] = {
+        0x52,
+        0xFF, 0x71, 0x24,
+        0x50,
+        0xFF, 0xB7, 0x38, 0x02, 0x00, 0x00,
+        0xE8, 0x17, 0x66, 0xFF, 0xFF,
+        0x5F,     // <--
+        0xB0, 0x01,
+        0x5E,
+        0xC3,
+        0x51
+    };
+  enum { addr_offset = 16 };
+
+    for (auto addr : Util::SearchMemory(pattern, sizeof(pattern), PAGE_EXECUTE, processStartAddress, processStopAddress))
+    {
+        HookParam hp = {};
+        hp.address = addr+addr_offset;
+        hp.offset = pusha_ebp_off - 4;
+        hp.codepage = 65001;
+        hp.type = USING_STRING | NO_CONTEXT;
+		hp.filter_fun = DmmFilter;
+        ConsoleOutput("Textractor: INSERT DMM2");
+        NewHook(hp, "DMM2");
+        found = true;
+    }
+    if (!found) ConsoleOutput("Textractor:DMM2: pattern not found");
+    return found;
+}
+
+bool InsertDmmHooks()
+{ return InsertDmm1Hook() || InsertDmm2Hook();}
+
+bool SystemNNNFilter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+
+  StringCharReplacer(text, len, "\r\n", 2, ' ');
+  StringCharReplacer(text, len, "\x00FC\x00FE", 2, '\'');           // "\x00FC\x00FE"->italic
+  StringReplacer(text, len, "\x0081\x000E", 2, "\x0084\x009F", 2);  // "\x0081\x000E"->"─"
+
+  // Remove ruby: Shift-JIS "\x0023\x0081\x006D"->"#［" "\x0081\x006E"->"］"
+  if (cpp_strnstr(text, "\x0023\x0081\x006D", *len)) {
+    StringFilterBetween(text, len, "\x0023\x0081\x006D", 3, "\x0081\x006E", 2);
+  }
+  return true;
+}
+
+bool InsertSystemNNN1Hook() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/v33721
+    * https://vndb.org/v29300
+    * https://vndb.org/v26721
+    */
+  const BYTE bytes[] = {
+    0x8B, 0xDF,               // mov ebx,edi
+    0x8D, 0x4B, 0x01,         // lea ecx,[ebx+01]  << hook here
+    0x0F, 0x1F, 0x40, 0x00,   // nop dword ptr [eax+00]
+    0x8A, 0x03,               // mov al,[ebx]
+    0x43,                     // inc ebx
+    0x84, 0xC0,               // test al,al
+    0x75, 0xF9,               // jne exe+69320
+    0x2B, 0xD9                // sub ebx,ecx
+  };
+  //enum { addr_offset = sizeof(bytes) - 2 };
+  enum { addr_offset = 2 };
+
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:System-NNN1: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr + addr_offset;
+  hp.offset = pusha_ebx_off -4;
+  hp.type = USING_STRING | NO_CONTEXT;
+  hp.filter_fun = SystemNNNFilter;
+  ConsoleOutput("vnreng: INSERT System-NNN1");
+  NewHook(hp, "System-NNN1");
+  return true;
+}
+
+bool SystemNNNqFilter(LPVOID data, DWORD *size, HookParam *, BYTE)
+{
+  auto text = reinterpret_cast<LPSTR>(data);
+  auto len = reinterpret_cast<size_t *>(size);
+  text[*len] = '\n';
+  (*len)++;
+  return true;
+}
+
+bool InsertSystemNNN2Hook() 
+{
+  //by Blu3train
+    /*
+    * Sample games:
+    * https://vndb.org/v933
+    */
+  const BYTE bytes[] = {
+    0x33, 0xC0,                          // xor eax,eax  << hook here
+    0xF2, 0xAE,                          // repne scasb 
+    0xF7, 0xD1,                          // not ecx
+    0x49,                                // dec ecx
+    0x89, 0x74, 0x24, 0x0C,              // mov [esp+0C],esi
+    0x3B, 0xCE,                          // cmp ecx,esi
+    0x89, 0x4C, 0x24, 0x10,              // mov [esp+10],ecx
+    0x0F, 0x8E, XX4                      // jng gss.exe+1A0DC
+  };
+  enum { addr_offset = 0};
+  ULONG range = min(processStopAddress - processStartAddress, MAX_REL_ADDR);
+  ULONG addr = MemDbg::findBytes(bytes, sizeof(bytes), processStartAddress, processStartAddress + range);
+  if (!addr) {
+    ConsoleOutput("vnreng:System-NNN2: pattern not found");
+    return false;
+  }
+
+  HookParam hp = {};
+  hp.address = addr + addr_offset;
+  hp.offset = pusha_edi_off -4;
+  hp.type = USING_STRING | NO_CONTEXT;
+  hp.filter_fun = SystemNNNFilter;
+  ConsoleOutput("vnreng: INSERT System-NNN2");
+  NewHook(hp, "System-NNN2");
+  
+  const BYTE bytes2[] = {
+    0xC1, 0xE9, 0x02,        // shr ecx,02
+    0xF3, 0xA5,              // repe movsd 
+    0x8B, 0xCB,              // mov ecx,ebx
+    0x8B, 0x54, 0x24, 0x1C,  // mov edx,[esp+1C]
+    0x83, 0xE1, 0x03,        // and ecx,03
+    0x03, 0xC5,              // add eax,ebp
+    0x33, 0xDB               // xor ebx,ebx
+  };
+  addr = MemDbg::findBytes(bytes2, sizeof(bytes2), processStartAddress, processStartAddress + range);
+  if (addr) {
+    HookParam hp = {};
+    hp.address = addr;
+    hp.offset = pusha_esi_off -4;
+    hp.type = USING_STRING;
+    hp.filter_fun = SystemNNNqFilter;
+    ConsoleOutput("vnreng: INSERT System-NNN2q");
+    NewHook(hp, "System-NNN2q");
+  }
+
+  return true;
+}
+
+bool InsertSystemNNNHooks()
+{ return InsertSystemNNN1Hook() || InsertSystemNNN2Hook();}
 
 } // namespace Engine
 
